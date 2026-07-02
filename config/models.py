@@ -1,67 +1,47 @@
-"""
-Назначение моделей по ролям.
+# Скопируй этот файл в .env и заполни своими значениями.
+# Никогда не коммить .env с реальными значениями в git!
 
-ВАЖНО: значения ниже — это deployment names, которые ДОЛЖНЫ существовать
-в твоём Azure AI Foundry проекте (как ты их назвал при деплое модели).
-Если у тебя deployment называется иначе (например "gpt-51-prod" вместо
-"gpt-5.1") — поправь строки ниже, а не код агентов.
+# --- Azure AI Foundry ---
+# Project endpoint (не resource endpoint!), вида:
+# https://<your-project>.<region>.api.azureml.ms
+# или https://<your-project>.services.ai.azure.com/api/projects/<project-name>
+FOUNDRY_PROJECT_ENDPOINT=
 
-Логика распределения:
-- CTO / Backend / QA — нужна максимальная глубина рассуждений, споры идут
-  на уровне архитектурных решений и рисков => топовые reasoning-модели.
-- Frontend/Product — нужна скорость и "человеческий" продуктовый голос,
-  не обязательна максимальная глубина => быстрая, но грамотная модель.
-- Code Scout — не участвует в споре, его работа — копаться в репо
-  (читать файлы, диффы, грепать) => модель, заточенная под код,
-  а не под "красивые" рассуждения.
-- Moderator (manager в GroupChat) — не имеет своего мнения о проекте,
-  просто решает кто говорит следующим => дешёвая/быстрая модель достаточно.
-"""
+# Аутентификация идёт через DefaultAzureCredential.
+# Локально достаточно выполнить `az login` в терминале перед запуском —
+# отдельный ключ сюда писать не нужно.
 
-import os
+# --- GitHub ---
+# Personal Access Token (classic) со scope "repo" — нужен для клонирования
+# приватных репозиториев. Создать: GitHub -> Settings -> Developer settings
+# -> Personal access tokens -> Tokens (classic) -> Generate new token.
+GITHUB_TOKEN=
 
-# Azure AI Foundry endpoint и креды берутся из переменных окружения,
-# см. .env.example. Используем DefaultAzureCredential под капотом
-# (см. client_factory.py) — никаких ключей в коде.
+# --- Опционально: переопределить модели по ролям ---
+# Если не задано — берутся значения по умолчанию из config/models.py
+# MODEL_CTO=o3
+# MODEL_BACKEND=gpt-5.1
+# MODEL_PRODUCT=gpt-5.4-mini
+# MODEL_QA=gpt-5.1
+# MODEL_CODE_SCOUT=gpt-5.3-codex
+# MODEL_MODERATOR=gpt-5.4-mini
 
-MODEL_ASSIGNMENTS = {
-    # Архитектура, риски, приоритеты, технический долг
-    "cto": os.getenv("MODEL_CTO", "o3"),
+# Куда клонировать репозитории локально
+AI_TEAM_WORKDIR=./repos
 
-    # Дотошный сильный синьор-бэкендер — ищет логические дыры,
-    # любит математически обосновывать возражения
-    "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.1"),
+# --- Совет директоров (main_board.py) ---
+# Опционально переопределить модели по ролям (если не задано —
+# значения по умолчанию из config/models.py)
+# MODEL_BOARD_MEKHMAT=o3
+# MODEL_BOARD_FIZTECH=gpt-5.1
+# MODEL_BOARD_FIZMAT=o3
+# MODEL_BOARD_TEHMAT=gpt-5.1
+# MODEL_BOARD_SECRETARY=gpt-5.4-mini
+# MODEL_BOARD_AGENDA=gpt-5.4-mini
 
-    # Продукт / фронт / UX — топит за пользователя и скорость выхода
-    "product_frontend": os.getenv("MODEL_PRODUCT", "gpt-5.4-mini"),
-
-    # QA / Security — параноик, ищет edge-cases и дыры в безопасности
-    "qa_security": os.getenv("MODEL_QA", "gpt-5.1"),
-
-    # Не участник дискуссии — "руки", читающие репозиторий по запросу
-    # любого агента. Заточен под код, не под рассуждения.
-    "code_scout": os.getenv("MODEL_CODE_SCOUT", "gpt-5.3-codex"),
-
-    # Модератор GroupChat — выбирает кто говорит следующим.
-    # Не должен быть дорогой моделью, это чисто роутинг.
-    "moderator": os.getenv("MODEL_MODERATOR", "gpt-5.4-mini"),
-}
-
-# Эндпоинт Azure AI Foundry (project endpoint, не resource endpoint!)
-FOUNDRY_PROJECT_ENDPOINT = os.getenv("FOUNDRY_PROJECT_ENDPOINT", "")
-
-# --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
-# Отдельная команда, не трогает код — только стратегическое обсуждение.
-# Всем ролям тут не нужна codex-модель (нет grep/diff), но нужна
-# сильная рассуждающая модель — споры содержательные, не косметические.
-BOARD_MODEL_ASSIGNMENTS = {
-    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "o3"),
-    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.1"),
-    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "o3"),
-    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.1"),
-    # Секретарь: ведёт заседание (кто говорит следующим) и в конце сam
-    # сжимает итог в отчёт для Telegram — не должен быть дорогой моделью.
-    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4-mini"),
-    # Формулирует повестку дня (тему заседания), если не задана вручную.
-    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "gpt-5.4-mini"),
-}
+# --- Telegram (для отправки отчёта заседания совета) ---
+# Токен бота: создать через @BotFather в Telegram -> /newbot
+TELEGRAM_BOT_TOKEN=
+# Chat ID: напиши что-нибудь своему боту, затем открой в браузере
+# https://api.telegram.org/bot<TOKEN>/getUpdates и найди "chat":{"id": ...}
+TELEGRAM_CHAT_ID=
