@@ -2,3 +2,4 @@ agent-framework
 agent-framework-azure
 azure-identity
 python-dotenv
+requests
