@@ -1,21 +1,17 @@
 """
-Заседание совета директоров.
+Заседание совета директоров — автономный режим.
 
-В отличие от workflows/discussion.py (код-ревью, привязано к коммитам),
-здесь никакого доступа к репозиториям нет. Сценарий:
-
-1. Определяем повестку — либо из аргумента командной строки
-   (python main_board.py "тема"), либо агент agenda_setter сам
-   формулирует стратегический вопрос на основе контекста компании.
-2. GroupChat: mekhmat, fiztech, fizmat, tehmat обсуждают вопрос под
-   управлением секретаря (кто говорит следующим).
-3. По окончании секретарь сжимает всю дискуссию в короткий структурированный
-   отчёт (проблема -> позиции -> итоговая рекомендация -> следующий шаг).
-4. Отчёт печатается в консоль и отправляется в Telegram.
+Сценарий:
+1. agenda_setter сам формулирует стратегический вопрос (или берёт из CLI).
+2. GroupChat: mekhmat, fiztech, fizmat, tehmat спорят.
+3. Секретарь составляет ПОЛНЫЙ красивый отчёт со стенограммой —
+   не краткое резюме, а живой документ где виден характер каждого.
+4. Отчёт уходит в Telegram (несколькими сообщениями если длинный).
 """
 
 import asyncio
 import sys
+from datetime import datetime
 
 from agent_framework import ChatMessage
 from agent_framework.workflows import GroupChatBuilder
@@ -25,120 +21,144 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
 
-MAX_MESSAGES = 16  # заседание короче код-ревью — тут не нужно копать код
+MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
+
+ROLE_LABELS = {
+    "mekhmat":  "🔢 Мехмат",
+    "fiztech":  "⚙️  Физтех",
+    "fizmat":   "🎲 Физмат",
+    "tehmat":   "♟️  Техмат",
+    "secretary": "📋 Секретарь",
+}
 
 DEFAULT_AGENDA_HINTS = """
-Примеры вопросов, если нужно предложить свой (не обязательно брать
-буквально один из них — сформулируй наиболее актуальный сейчас):
-- Стоит ли сузить фокус до одного проекта (скорее всего BLD) или
-  осознанно вести три параллельно ещё какое-то время.
-- Как получить первого платящего клиента BLD в следующие 4-6 недель.
-- Когда и на каких условиях имеет смысл искать сооснователя или
-  первого сотрудника, при том что сейчас компания — один человек.
-- Bootstrapped-рост vs привлечение инвестиций на этой стадии.
-- Что из трёх проектов стоит заморозить/закрыть, если ресурс не резиновый.
+Примеры направлений (выбери или придумай актуальнее):
+- Как получить первого платящего клиента BLD в ближайшие 4-6 недель.
+- Стоит ли вести три проекта параллельно или сузить фокус до одного.
+- Когда и на каких условиях искать сооснователя — и нужен ли он вообще.
+- Bootstrapped-рост vs внешние инвестиции на текущей стадии.
+- Что заморозить/закрыть если ресурс (время одного человека) не резиновый.
+- Как выстроить воронку продаж BLD не имея отдела продаж.
+- Правильная ли ценовая модель BLD для украинского рынка прямо сейчас.
 """
 
 
 async def find_agenda(cli_hint: str | None) -> str:
-    """Формулирует тему заседания. Если передан аргумент командной строки —
-    использует его как есть. Иначе агент сам предлагает актуальный вопрос."""
     if cli_hint:
         return cli_hint.strip()
 
-    agenda_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["agenda_setter"])
+    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["agenda_setter"])
     prompt = f"""
 {COMPANY_CONTEXT}
 {DEFAULT_AGENDA_HINTS}
 
-Сформулируй ОДИН конкретный стратегический вопрос для сегодняшнего
-заседания совета директоров. Вопрос должен требовать реального решения
-"что делать дальше", а не быть общим ("как расти лучше").
-Ответь ТОЛЬКО самим вопросом, без преамбулы.
+Сформулируй ОДИН острый стратегический вопрос для заседания совета.
+Вопрос должен быть конкретным и требовать реального решения прямо сейчас,
+а не абстрактным рассуждением о будущем.
+Ответь ТОЛЬКО самим вопросом, без преамбулы и кавычек.
 """
-    response = await agenda_client.get_response([ChatMessage(role="user", text=prompt)])
-    return response.text.strip()
+    r = await client.get_response([ChatMessage(role="user", text=prompt)])
+    return r.text.strip()
 
 
 def build_board_workflow(board: dict):
     secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
 
     def stop_condition(messages: list[ChatMessage]) -> bool:
-        assistant_messages = [m for m in messages if m.role == "assistant"]
-        return len(assistant_messages) >= MAX_MESSAGES
+        return len([m for m in messages if m.role == "assistant"]) >= MAX_MESSAGES
 
-    workflow = (
+    return (
         GroupChatBuilder()
         .set_prompt_based_manager(
             chat_client=secretary_client,
             display_name="secretary",
             instructions="""
-Ты — секретарь заседания совета директоров. У тебя нет своего мнения
-о стратегии, твоя задача — после каждого сообщения решать, кто из
-участников (mekhmat, fiztech, fizmat, tehmat) должен ответить следующим.
+Ты — секретарь заседания. Нет своего мнения о стратегии.
+После каждого сообщения выбираешь кто говорит следующим:
+mekhmat, fiztech, fizmat или tehmat.
 
-Правила выбора:
-- Если кого-то явно упомянули по имени/роли — выбирай его.
-- Если кто-то задал прямой вопрос — выбирай адресата.
-- Если прозвучало утверждение, которое противоречит складу мышления
-  другого участника (например: чистый расчёт без учёта реакции рынка,
-  или план без учёта ограничения по времени одного человека) — дай
-  ему слово, чтобы возразить.
-- Не давай одному участнику говорить три раза подряд без необходимости.
-- Если обсуждение пришло к согласию или четырём участникам нечего
-  больше добавить — заверши заседание.
+Правила:
+- Назвали кого-то по имени/роли → его очередь.
+- Прямой вопрос → адресату.
+- Утверждение противоречит чужой области → дай возразить.
+- Один и тот же не говорит трижды подряд без необходимости.
+- Пришли к выводу или нечего добавить → заверши.
 """,
         )
         .participants(**board)
         .termination_condition(stop_condition)
         .build()
     )
-    return workflow
 
 
 async def compile_report(agenda: str, transcript: list[ChatMessage]) -> str:
-    """Сжимает всю дискуссию в короткий отчёт, пригодный для Telegram."""
-    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
+    """Составляет полный живой отчёт — стенограмма + аналитика секретаря."""
+    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
 
-    discussion_text = "\n".join(
-        f"{m.author_name or 'unknown'}: {m.text}" for m in transcript if m.role == "assistant"
-    )
+    # Форматируем стенограмму с метками ролей
+    lines = []
+    for m in transcript:
+        if m.role != "assistant":
+            continue
+        name = m.author_name or "unknown"
+        label = ROLE_LABELS.get(name, name.upper())
+        lines.append(f"{label}:\n{m.text.strip()}")
+    steno = "\n\n".join(lines)
+
+    now = datetime.now().strftime("%d.%m.%Y, %H:%M")
 
     prompt = f"""
+Ты — секретарь, составляешь протокол заседания совета директоров для Валика.
+
 Вопрос заседания: {agenda}
+Дата и время: {now}
 
-Стенограмма заседания совета директоров:
-{discussion_text}
+Стенограмма:
+{steno}
 
-Составь короткий отчёт для Валика (основателя) по итогам этого заседания.
-Формат строго такой (используй именно эти заголовки, без markdown-звёздочек,
-это уйдёт в Telegram обычным текстом):
+Составь протокол в следующем формате (строго, без markdown звёздочек и решёток,
+только сам текст — это уйдёт в Telegram):
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ПРОТОКОЛ ЗАСЕДАНИЯ СОВЕТА
+{now}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ВОПРОС:
-(одна строка)
+[вопрос повестки одной строкой]
 
-ПОЗИЦИИ:
-(2-4 строки — кто на чём настаивал, коротко, только суть разногласий)
+СТЕНОГРАММА:
+[Здесь перепиши каждую реплику в формате:
+РОЛЬ — ключевая мысль реплики (1-2 предложения, сохраняя характер и интонацию
+человека, не сглаживай — мехмат должен звучать дотошно и жёстко,
+физтех — системно и про ресурсы, физмат — про вероятности и риски,
+техмат — про игроков рынка и стимулы). Если была острая реплика — не смягчай.]
+
+ИТОГ ДИСКУССИИ:
+[3-5 предложений: в чём сошлись, в чём остались разногласия, какова
+общая позиция совета]
 
 РЕКОМЕНДАЦИЯ:
-(итоговая рекомендация совета, 2-4 строки, конкретно)
+[Конкретное решение или направление — без воды, 2-3 предложения]
 
 СЛЕДУЮЩИЙ ШАГ:
-(один конкретный, выполнимый одним человеком за разумный срок шаг)
+[Один действие, выполнимое одним человеком в течение недели, очень конкретно]
 
-Пиши по-русски, кратко, без воды. Общий объём — не больше 900 символов.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Пиши по-русски. Стенограмму не сокращай сильно — Валик должен чувствовать
+характер каждого участника, это не краткое резюме а живой документ.
 """
-    response = await secretary_client.get_response([ChatMessage(role="user", text=prompt)])
-    return response.text.strip()
+    r = await client.get_response([ChatMessage(role="user", text=prompt)])
+    return r.text.strip()
 
 
 async def main():
     cli_hint = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else None
 
-    print("Формулируем повестку заседания...")
+    print("Формулируем повестку...")
     agenda = await find_agenda(cli_hint)
-    print(f"\nПовестка:\n{agenda}\n")
-    print("=" * 80)
+    print(f"\nПовестка: {agenda}\n{'=' * 60}")
 
     board = build_board()
     workflow = build_board_workflow(board)
@@ -149,16 +169,13 @@ async def main():
         if hasattr(event, "data") and isinstance(event.data, ChatMessage):
             msg = event.data
             transcript.append(msg)
-            print(f"\n[{msg.author_name or 'system'}]: {msg.text}")
+            label = ROLE_LABELS.get(msg.author_name or "", msg.author_name or "system")
+            print(f"\n{label}: {msg.text}")
 
-    print("\n" + "=" * 80)
-    print("Готовим отчёт...")
+    print(f"\n{'=' * 60}\nСоставляем протокол...")
     report = await compile_report(agenda, transcript)
 
-    print("\n" + "=" * 80)
-    print("ОТЧЁТ:\n")
-    print(report)
-
+    print(f"\n{'=' * 60}\n{report}")
     send_telegram_report(report)
 
 
