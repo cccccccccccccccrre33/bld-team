@@ -49,3 +49,19 @@ MODEL_ASSIGNMENTS = {
 
 # Эндпоинт Azure AI Foundry (project endpoint, не resource endpoint!)
 FOUNDRY_PROJECT_ENDPOINT = os.getenv("FOUNDRY_PROJECT_ENDPOINT", "")
+
+# --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
+# Отдельная команда, не трогает код — только стратегическое обсуждение.
+# Всем ролям тут не нужна codex-модель (нет grep/diff), но нужна
+# сильная рассуждающая модель — споры содержательные, не косметические.
+BOARD_MODEL_ASSIGNMENTS = {
+    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "o3"),
+    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.1"),
+    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "o3"),
+    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.1"),
+    # Секретарь: ведёт заседание (кто говорит следующим) и в конце сam
+    # сжимает итог в отчёт для Telegram — не должен быть дорогой моделью.
+    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4-mini"),
+    # Формулирует повестку дня (тему заседания), если не задана вручную.
+    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "gpt-5.4-mini"),
+}
