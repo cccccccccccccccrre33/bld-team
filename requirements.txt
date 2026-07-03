@@ -1,5 +1,8 @@
-agent-framework
-agent-framework-azure
+# agent-framework — реальный пакет от Microsoft. Он уже включает Azure/Foundry
+# поддержку (agent_framework.foundry, agent_framework.azure) — отдельный пакет
+# "agent-framework-azure" на PyPI НЕ нужен, это другой (зарезервированный,
+# пустой) пакет, легко перепутать по названию.
+agent-framework>=1.10.0,<2.0.0
 azure-identity
 python-dotenv
 requests
