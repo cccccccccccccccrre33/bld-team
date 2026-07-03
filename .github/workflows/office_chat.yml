@@ -1,0 +1,77 @@
+name: Office Chat
+
+on:
+  schedule:
+    # Проверка каждые 3 часа с 9:00 до 21:00 по Киеву (UTC+3) —
+    # т.е. в 06,09,12,15,18 UTC. Реально разговор случается не каждый
+    # раз — см. шаг "Decide" ниже, там 65% шанс пропуска.
+    - cron: '0 6,9,12,15,18 * * *'
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: 'Какой репозиторий обсудить (пусто = случайно)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - bld-system
+          - bld-panel
+
+jobs:
+  chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 65% шанс пропуска — при 5 проверках в день это в среднем
+      # ~1.75 реальных разговора в сутки, не по расписанию, а как будто
+      # "когда захотели". Это отдельная защита бюджета от Board Meeting.
+      - name: Decide whether to chat
+        id: decide
+        run: |
+          ROLL=$(python3 -c "import random; print(random.randint(1, 100))")
+          echo "roll=$ROLL" >> $GITHUB_OUTPUT
+          if [ "$ROLL" -le 65 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Не сегодня, не в этот раз (roll=$ROLL/100)"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Разговор случится (roll=$ROLL/100)"
+          fi
+
+      - name: Run office chat
+        if: steps.decide.outputs.skip == 'false'
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+          MODEL_OFFICE_CTO:         ${{ vars.MODEL_OFFICE_CTO }}
+          MODEL_OFFICE_BACKEND:     ${{ vars.MODEL_OFFICE_BACKEND }}
+          MODEL_OFFICE_PRODUCT:     ${{ vars.MODEL_OFFICE_PRODUCT }}
+          MODEL_OFFICE_QA:          ${{ vars.MODEL_OFFICE_QA }}
+          MODEL_OFFICE_MODERATOR:   ${{ vars.MODEL_OFFICE_MODERATOR }}
+          MODEL_OFFICE_SPARK:       ${{ vars.MODEL_OFFICE_SPARK }}
+        run: |
+          REPO="${{ github.event.inputs.repo }}"
+          if [ -n "$REPO" ]; then
+            python main_office_chat.py "$REPO"
+          else
+            python main_office_chat.py
+          fi
