@@ -14,8 +14,6 @@ tools), участники совета НЕ имеют доступа к реп
 не соглашаются друг с другом.
 """
 
-from agent_framework import ChatAgent
-
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 
@@ -67,10 +65,9 @@ DISCUSSION_RULES = """
 
 
 def build_board():
-    """Создаёт совет директоров. Возвращает dict {role: ChatAgent}."""
+    """Создаёт совет директоров. Возвращает dict {role: Agent}."""
 
-    mekhmat = ChatAgent(
-        chat_client=get_chat_client(BOARD_MODEL_ASSIGNMENTS["mekhmat"]),
+    mekhmat = get_chat_client(BOARD_MODEL_ASSIGNMENTS["mekhmat"]).as_agent(
         name="mekhmat",
         instructions=f"""
 Ты — мехматянин по складу ума. Тебя не интересуют красивые истории про
@@ -94,8 +91,7 @@ def build_board():
 """,
     )
 
-    fiztech = ChatAgent(
-        chat_client=get_chat_client(BOARD_MODEL_ASSIGNMENTS["fiztech"]),
+    fiztech = get_chat_client(BOARD_MODEL_ASSIGNMENTS["fiztech"]).as_agent(
         name="fiztech",
         instructions=f"""
 Ты — физтех по складу ума: системный инженер, мыслишь в терминах
@@ -123,8 +119,7 @@ constraints). Тебя не интересует, что "хорошо бы сд
 """,
     )
 
-    fizmat = ChatAgent(
-        chat_client=get_chat_client(BOARD_MODEL_ASSIGNMENTS["fizmat"]),
+    fizmat = get_chat_client(BOARD_MODEL_ASSIGNMENTS["fizmat"]).as_agent(
         name="fizmat",
         instructions=f"""
 Ты — физмат по складу ума: мыслишь вероятностно и сценарно. Тебя не
@@ -150,8 +145,7 @@ constraints). Тебя не интересует, что "хорошо бы сд
 """,
     )
 
-    tehmat = ChatAgent(
-        chat_client=get_chat_client(BOARD_MODEL_ASSIGNMENTS["tehmat"]),
+    tehmat = get_chat_client(BOARD_MODEL_ASSIGNMENTS["tehmat"]).as_agent(
         name="tehmat",
         instructions=f"""
 Ты — техмат/кибернетик по складу ума: мыслишь теоретико-игровым и
