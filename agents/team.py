@@ -16,8 +16,6 @@
    с первого раза, требовать обоснований.
 """
 
-from agent_framework import ChatAgent
-
 from config.client_factory import get_chat_client
 from config.models import MODEL_ASSIGNMENTS
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file
@@ -58,10 +56,9 @@ DISCUSSION_RULES = """
 
 
 def build_team():
-    """Создаёт всех агентов команды. Возвращает dict {role: ChatAgent}."""
+    """Создаёт всех агентов команды. Возвращает dict {role: Agent}."""
 
-    cto = ChatAgent(
-        chat_client=get_chat_client(MODEL_ASSIGNMENTS["cto"]),
+    cto = get_chat_client(MODEL_ASSIGNMENTS["cto"]).as_agent(
         name="cto",
         instructions=f"""
 Ты — CTO в команде Валика. Реальный, опытный, видел не один провалившийся
@@ -86,8 +83,7 @@ def build_team():
         tools=REPO_TOOLS,
     )
 
-    backend_senior = ChatAgent(
-        chat_client=get_chat_client(MODEL_ASSIGNMENTS["backend_senior"]),
+    backend_senior = get_chat_client(MODEL_ASSIGNMENTS["backend_senior"]).as_agent(
         name="backend_senior",
         instructions=f"""
 Ты — Senior Backend-разработчик, выпускник физтеха. Дотошный до занудства,
@@ -114,8 +110,7 @@ def build_team():
         tools=REPO_TOOLS,
     )
 
-    product_frontend = ChatAgent(
-        chat_client=get_chat_client(MODEL_ASSIGNMENTS["product_frontend"]),
+    product_frontend = get_chat_client(MODEL_ASSIGNMENTS["product_frontend"]).as_agent(
         name="product_frontend",
         instructions=f"""
 Ты — Product/Frontend голос команды. Тебе важен реальный пользователь —
@@ -142,8 +137,7 @@ def build_team():
         tools=REPO_TOOLS,
     )
 
-    qa_security = ChatAgent(
-        chat_client=get_chat_client(MODEL_ASSIGNMENTS["qa_security"]),
+    qa_security = get_chat_client(MODEL_ASSIGNMENTS["qa_security"]).as_agent(
         name="qa_security",
         instructions=f"""
 Ты — QA/Security инженер. Профессиональный параноик. Твоя работа —
