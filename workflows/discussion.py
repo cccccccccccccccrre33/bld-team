@@ -7,7 +7,7 @@
    ОДИН конкретный спорный вопрос для команды (не "обсудите проект",
    а "вот это изменение в L7 — это решение или забытый баг?").
 3. Запускается GroupChat: CTO, Backend Senior, Product/Frontend,
-   QA/Security обсуждают этот вопрос. Модератор (промпт-агент)
+   QA/Security обсуждают этот вопрос. Модератор (отдельный Agent)
    решает, кто говорит следующим — без жёсткого round-robin,
    ориентируясь на то, кто реально хочет/должен ответить дальше.
 4. Дискуссия останавливается по term. условию (число сообщений)
@@ -16,13 +16,14 @@
 
 import asyncio
 
-from agent_framework import ChatMessage
-from agent_framework.workflows import GroupChatBuilder
+from agent_framework import Message
+from agent_framework.orchestrations import GroupChatBuilder
 
 from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import MODEL_ASSIGNMENTS
 from tools.repo_tools import clone_or_update_repos, git_log
+from workflows._common import ask, extract_messages
 
 MAX_MESSAGES = 24  # защита от бесконечного спора / траты кредитов
 
@@ -56,24 +57,15 @@ async def find_discussion_topic() -> str:
 
 Ответь ТОЛЬКО самим вопросом, без преамбулы.
 """
-    response = await scout_client.get_response([ChatMessage(role="user", text=prompt)])
-    return response.text.strip()
+    return await ask(scout_client, prompt)
 
 
 def build_discussion_workflow(team: dict):
-    """Собирает GroupChat workflow с prompt-based manager'ом."""
+    """Собирает GroupChat workflow с модератором-агентом."""
     moderator_client = get_chat_client(MODEL_ASSIGNMENTS["moderator"])
-
-    def stop_condition(messages: list[ChatMessage]) -> bool:
-        assistant_messages = [m for m in messages if m.role == "assistant"]
-        return len(assistant_messages) >= MAX_MESSAGES
-
-    workflow = (
-        GroupChatBuilder()
-        .set_prompt_based_manager(
-            chat_client=moderator_client,
-            display_name="moderator",
-            instructions="""
+    moderator_agent = moderator_client.as_agent(
+        name="moderator",
+        instructions="""
 Ты — модератор технического обсуждения. У тебя НЕТ своего мнения
 о проекте, твоя единственная задача — после каждого сообщения решать,
 кто из участников (cto, backend_senior, product_frontend, qa_security)
@@ -90,12 +82,20 @@ def build_discussion_workflow(team: dict):
 - Если обсуждение явно пришло к согласию или зашло в тупик —
   заверши разговор.
 """,
+    )
+
+    def stop_condition(messages: list[Message]) -> bool:
+        assistant_messages = [m for m in messages if m.role == "assistant"]
+        return len(assistant_messages) >= MAX_MESSAGES
+
+    return (
+        GroupChatBuilder(
+            participants=list(team.values()),
+            orchestrator_agent=moderator_agent,
+            termination_condition=stop_condition,
         )
-        .participants(**team)
-        .termination_condition(stop_condition)
         .build()
     )
-    return workflow
 
 
 async def main():
@@ -110,21 +110,17 @@ async def main():
     team = build_team()
     workflow = build_discussion_workflow(team)
 
-    events = await workflow.run(topic, stream=True)
-    async for event in events:
-        # Печатаем каждое сообщение по мере поступления — реалтайм-лог спора
-        if hasattr(event, "data") and isinstance(event.data, ChatMessage):
-            msg = event.data
+    result = await workflow.run(topic)
+    messages = extract_messages(result.get_outputs())
+
+    print("\n" + "=" * 80)
+    print("ХОД ДИСКУССИИ:\n")
+    for msg in messages:
+        if msg.role == "assistant":
             print(f"\n[{msg.author_name or 'system'}]: {msg.text}")
 
-    outputs = events.get_outputs()
     print("\n" + "=" * 80)
-    print("ИТОГ ДИСКУССИИ:")
-    for output in outputs:
-        if isinstance(output, ChatMessage):
-            print(output.text)
-        else:
-            print(output)
+    print("Готово.")
 
 
 if __name__ == "__main__":
