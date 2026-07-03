@@ -16,14 +16,15 @@ import asyncio
 import random
 import sys
 
-from agent_framework import ChatMessage
-from agent_framework.workflows import GroupChatBuilder
+from agent_framework import Message
+from agent_framework.orchestrations import GroupChatBuilder
 
 from agents.office_chat import build_office_chat_team, CONTEXT_PREAMBLE
 from config.client_factory import get_chat_client
 from config.models import OFFICE_MODEL_ASSIGNMENTS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
+from workflows._common import ask, extract_messages
 
 MAX_MESSAGES = 12  # это чат, не заседание — держим коротко
 
@@ -45,6 +46,12 @@ async def find_spark(repo_hint: str | None) -> tuple[str, str]:
     repo = repo_hint or random.choice(["bld-system", "bld-panel"])
 
     client = get_chat_client(OFFICE_MODEL_ASSIGNMENTS["spark"])
+    spark_agent = client.as_agent(
+        name="spark",
+        instructions="Ты помогаешь найти живой повод для разговора, копаясь в реальном коде.",
+        tools=SPARK_TOOLS,
+    )
+
     prompt = f"""
 {CONTEXT_PREAMBLE}
 
@@ -63,25 +70,15 @@ async def find_spark(repo_hint: str | None) -> tuple[str, str]:
 Разговорный тон, не отчёт. Не пиши преамбулу вроде "вот моя находка" —
 сразу говори как в жизни.
 """
-    r = await client.get_response(
-        [ChatMessage(role="user", text=prompt)],
-        tools=SPARK_TOOLS,
-    )
-    return starter_role, r.text.strip()
+    response = await spark_agent.run(prompt)
+    return starter_role, response.text.strip()
 
 
 def build_chat_workflow(team: dict):
     moderator_client = get_chat_client(OFFICE_MODEL_ASSIGNMENTS["moderator"])
-
-    def stop_condition(messages: list[ChatMessage]) -> bool:
-        return len([m for m in messages if m.role == "assistant"]) >= MAX_MESSAGES
-
-    return (
-        GroupChatBuilder()
-        .set_prompt_based_manager(
-            chat_client=moderator_client,
-            display_name="moderator",
-            instructions="""
+    moderator_agent = moderator_client.as_agent(
+        name="moderator",
+        instructions="""
 Ты просто следишь за очередностью в неформальном чате коллег
 (cto, backend_senior, product_frontend, qa_security). Это не совещание —
 не нужно строго идти по повестке.
@@ -94,14 +91,22 @@ def build_chat_workflow(team: dict):
 - Это чат, не протокол — можно завершить и раньше лимита, если люди
   явно закруглились ("ну ладно, я пошёл кофе доливать" и т.п.).
 """,
+    )
+
+    def stop_condition(messages: list[Message]) -> bool:
+        return len([m for m in messages if m.role == "assistant"]) >= MAX_MESSAGES
+
+    return (
+        GroupChatBuilder(
+            participants=list(team.values()),
+            orchestrator_agent=moderator_agent,
+            termination_condition=stop_condition,
         )
-        .participants(**team)
-        .termination_condition(stop_condition)
         .build()
     )
 
 
-async def compile_chat_report(starter_role: str, spark_line: str, transcript: list[ChatMessage]) -> str:
+async def compile_chat_report(starter_role: str, spark_line: str, transcript: list[Message]) -> str:
     """Форматирует переписку в стиле 'что было в офисе', а не протокол."""
     client = get_chat_client(OFFICE_MODEL_ASSIGNMENTS["moderator"])
 
@@ -143,8 +148,7 @@ async def compile_chat_report(starter_role: str, spark_line: str, transcript: li
 Пиши по-русски, тепло и живо, не формально. Общий объём — не больше
 700 символов.
 """
-    r = await client.get_response([ChatMessage(role="user", text=prompt)])
-    return r.text.strip()
+    return await ask(client, prompt)
 
 
 async def main():
@@ -160,12 +164,11 @@ async def main():
     team = build_office_chat_team()
     workflow = build_chat_workflow(team)
 
-    transcript: list[ChatMessage] = []
-    events = await workflow.run(spark_line, stream=True)
-    async for event in events:
-        if hasattr(event, "data") and isinstance(event.data, ChatMessage):
-            msg = event.data
-            transcript.append(msg)
+    result = await workflow.run(spark_line)
+    transcript = extract_messages(result.get_outputs())
+
+    for msg in transcript:
+        if msg.role == "assistant":
             label = ROLE_LABELS.get(msg.author_name or "", msg.author_name or "system")
             print(f"\n{label}: {msg.text}")
 
