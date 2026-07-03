@@ -13,13 +13,14 @@ import asyncio
 import sys
 from datetime import datetime
 
-from agent_framework import ChatMessage
-from agent_framework.workflows import GroupChatBuilder
+from agent_framework import Message
+from agent_framework.orchestrations import GroupChatBuilder
 
 from agents.board import build_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
+from workflows._common import ask, extract_messages
 
 MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
 
@@ -57,45 +58,48 @@ async def find_agenda(cli_hint: str | None) -> str:
 а не абстрактным рассуждением о будущем.
 Ответь ТОЛЬКО самим вопросом, без преамбулы и кавычек.
 """
-    r = await client.get_response([ChatMessage(role="user", text=prompt)])
-    return r.text.strip()
+    return await ask(client, prompt)
 
 
 def build_board_workflow(board: dict):
     secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
+    secretary_agent = secretary_client.as_agent(
+        name="secretary",
+        instructions="""
+Ты — секретарь заседания совета директоров. У тебя нет своего мнения
+о стратегии, твоя задача — после каждого сообщения решать, кто из
+участников (mekhmat, fiztech, fizmat, tehmat) должен ответить следующим.
 
-    def stop_condition(messages: list[ChatMessage]) -> bool:
+Правила выбора:
+- Если кого-то явно упомянули по имени/роли — выбирай его.
+- Если кто-то задал прямой вопрос — выбирай адресата.
+- Если прозвучало утверждение, которое противоречит складу мышления
+  другого участника (например: чистый расчёт без учёта реакции рынка,
+  или план без учёта ограничения по времени одного человека) — дай
+  ему слово, чтобы возразить.
+- Не давай одному участнику говорить три раза подряд без необходимости.
+- Если обсуждение пришло к согласию или четырём участникам нечего
+  больше добавить — заверши заседание.
+""",
+    )
+
+    def stop_condition(messages: list[Message]) -> bool:
         return len([m for m in messages if m.role == "assistant"]) >= MAX_MESSAGES
 
     return (
-        GroupChatBuilder()
-        .set_prompt_based_manager(
-            chat_client=secretary_client,
-            display_name="secretary",
-            instructions="""
-Ты — секретарь заседания. Нет своего мнения о стратегии.
-После каждого сообщения выбираешь кто говорит следующим:
-mekhmat, fiztech, fizmat или tehmat.
-
-Правила:
-- Назвали кого-то по имени/роли → его очередь.
-- Прямой вопрос → адресату.
-- Утверждение противоречит чужой области → дай возразить.
-- Один и тот же не говорит трижды подряд без необходимости.
-- Пришли к выводу или нечего добавить → заверши.
-""",
+        GroupChatBuilder(
+            participants=list(board.values()),
+            orchestrator_agent=secretary_agent,
+            termination_condition=stop_condition,
         )
-        .participants(**board)
-        .termination_condition(stop_condition)
         .build()
     )
 
 
-async def compile_report(agenda: str, transcript: list[ChatMessage]) -> str:
-    """Составляет полный живой отчёт — стенограмма + аналитика секретаря."""
-    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
+async def compile_report(agenda: str, transcript: list[Message]) -> str:
+    """Сжимает всю дискуссию в короткий отчёт, пригодный для Telegram."""
+    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
 
-    # Форматируем стенограмму с метками ролей
     lines = []
     for m in transcript:
         if m.role != "assistant":
@@ -108,74 +112,60 @@ async def compile_report(agenda: str, transcript: list[ChatMessage]) -> str:
     now = datetime.now().strftime("%d.%m.%Y, %H:%M")
 
     prompt = f"""
-Ты — секретарь, составляешь протокол заседания совета директоров для Валика.
-
 Вопрос заседания: {agenda}
 Дата и время: {now}
 
-Стенограмма:
+Стенограмма заседания совета директоров:
 {steno}
 
-Составь протокол в следующем формате (строго, без markdown звёздочек и решёток,
-только сам текст — это уйдёт в Telegram):
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ПРОТОКОЛ ЗАСЕДАНИЯ СОВЕТА
-{now}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Составь короткий отчёт для Валика (основателя) по итогам этого заседания.
+Формат строго такой (используй именно эти заголовки, без markdown-звёздочек,
+это уйдёт в Telegram обычным текстом):
 
 ВОПРОС:
-[вопрос повестки одной строкой]
+(одна строка)
 
-СТЕНОГРАММА:
-[Здесь перепиши каждую реплику в формате:
-РОЛЬ — ключевая мысль реплики (1-2 предложения, сохраняя характер и интонацию
-человека, не сглаживай — мехмат должен звучать дотошно и жёстко,
-физтех — системно и про ресурсы, физмат — про вероятности и риски,
-техмат — про игроков рынка и стимулы). Если была острая реплика — не смягчай.]
-
-ИТОГ ДИСКУССИИ:
-[3-5 предложений: в чём сошлись, в чём остались разногласия, какова
-общая позиция совета]
+ПОЗИЦИИ:
+(2-4 строки — кто на чём настаивал, коротко, только суть разногласий)
 
 РЕКОМЕНДАЦИЯ:
-[Конкретное решение или направление — без воды, 2-3 предложения]
+(итоговая рекомендация совета, 2-4 строки, конкретно)
 
 СЛЕДУЮЩИЙ ШАГ:
-[Один действие, выполнимое одним человеком в течение недели, очень конкретно]
+(один конкретный, выполнимый одним человеком за разумный срок шаг)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Пиши по-русски. Стенограмму не сокращай сильно — Валик должен чувствовать
-характер каждого участника, это не краткое резюме а живой документ.
+Пиши по-русски, кратко, без воды. Общий объём — не больше 900 символов.
 """
-    r = await client.get_response([ChatMessage(role="user", text=prompt)])
-    return r.text.strip()
+    return await ask(secretary_client, prompt)
 
 
 async def main():
     cli_hint = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else None
 
-    print("Формулируем повестку...")
+    print("Формулируем повестку заседания...")
     agenda = await find_agenda(cli_hint)
-    print(f"\nПовестка: {agenda}\n{'=' * 60}")
+    print(f"\nПовестка:\n{agenda}\n")
+    print("=" * 80)
 
     board = build_board()
     workflow = build_board_workflow(board)
 
-    transcript: list[ChatMessage] = []
-    events = await workflow.run(agenda, stream=True)
-    async for event in events:
-        if hasattr(event, "data") and isinstance(event.data, ChatMessage):
-            msg = event.data
-            transcript.append(msg)
+    result = await workflow.run(agenda)
+    transcript = extract_messages(result.get_outputs())
+
+    for msg in transcript:
+        if msg.role == "assistant":
             label = ROLE_LABELS.get(msg.author_name or "", msg.author_name or "system")
             print(f"\n{label}: {msg.text}")
 
-    print(f"\n{'=' * 60}\nСоставляем протокол...")
+    print("\n" + "=" * 80)
+    print("Готовим отчёт...")
     report = await compile_report(agenda, transcript)
 
-    print(f"\n{'=' * 60}\n{report}")
+    print("\n" + "=" * 80)
+    print("ОТЧЁТ:\n")
+    print(report)
+
     send_telegram_report(report)
 
 
