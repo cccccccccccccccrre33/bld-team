@@ -21,7 +21,7 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, extract_messages
+from workflows._common import ask, dispatch_worker, extract_messages, extract_next_step, load_recent_topics, save_topic
 
 MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
 
@@ -58,6 +58,17 @@ async def find_agenda(cli_hint: str | None) -> str:
     if cli_hint:
         return cli_hint.strip()
 
+    recent_topics = load_recent_topics("board_topics.json")
+    recent_block = ""
+    if recent_topics:
+        recent_block = (
+            "\nПоследние темы прошлых заседаний (НЕ повторяй их и не бери "
+            "тот же угол — код между заседаниями мог не измениться, но "
+            "тема должна быть новой; если ничего нового не нашлось, копни "
+            "глубже в другую часть кода):\n"
+            + "\n".join(f"- {t}" for t in recent_topics)
+        )
+
     client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["agenda_setter"])
     agenda_agent = client.as_agent(
         name="agenda_setter",
@@ -67,6 +78,7 @@ async def find_agenda(cli_hint: str | None) -> str:
     prompt = f"""
 {COMPANY_CONTEXT}
 {AGENDA_SCOPE}
+{recent_block}
 
 Загляни в реальный код (git_log, grep_repo, read_file по bld-system и
 bld-panel), найди что-то конкретное, за что можно зацепиться, и сам
@@ -77,7 +89,9 @@ bld-panel), найди что-то конкретное, за что можно 
 Ответь ТОЛЬКО самим вопросом, без преамбулы и кавычек.
 """
     response = await agenda_agent.run(prompt)
-    return response.text.strip()
+    topic = response.text.strip()
+    save_topic("board_topics.json", topic)
+    return topic
 
 
 def build_board_workflow(board: dict):
@@ -116,7 +130,8 @@ def build_board_workflow(board: dict):
 
 
 async def compile_report(agenda: str, transcript: list[Message]) -> str:
-    """Сжимает всю дискуссию в короткий отчёт, пригодный для Telegram."""
+    """Составляет ПОЛНЫЙ отчёт с детальной стенограммой — кто что сказал,
+    а не сжатое резюме на 2 строки."""
     secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
 
     lines = []
@@ -134,26 +149,41 @@ async def compile_report(agenda: str, transcript: list[Message]) -> str:
 Вопрос заседания: {agenda}
 Дата и время: {now}
 
-Стенограмма заседания совета директоров:
+Реальная стенограмма заседания совета директоров:
 {steno}
 
-Составь короткий отчёт для Валика (основателя) по итогам этого заседания.
-Формат строго такой (используй именно эти заголовки, без markdown-звёздочек,
-это уйдёт в Telegram обычным текстом):
+Составь ПОДРОБНЫЙ отчёт для Валика (без markdown-звёздочек, простой
+текст для Telegram, сообщение может быть разбито на части — не бойся
+объёма, детальность важнее краткости):
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+СОВЕТ ДИРЕКТОРОВ — {now}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ВОПРОС:
-(одна строка)
+[одна-две строки]
 
-ПОЗИЦИИ:
-(2-4 строки — кто на чём настаивал, коротко, только суть разногласий)
+ХОД ОБСУЖДЕНИЯ:
+[Это главная часть — реально по каждой значимой реплике: РОЛЬ — что
+именно сказал, какой аргумент привёл, с кем спорил и почему. Не сжимай
+в одну строку на человека — если Мехмат привёл конкретный формальный
+аргумент, опиши именно его; если Физтех возразил конкретной цифрой или
+ограничением — укажи какой. Сохраняй характер и резкость реплик, не
+сглаживай разногласия. Это должно читаться как реальный отчёт о
+дискуссии, а не как аннотация к ней.]
+
+ГДЕ СОШЛИСЬ / ГДЕ РАЗОШЛИСЬ:
+[Явно укажи: в чём было согласие, и в чём остался нерешённый спор
+(если остался) — не делай вид, что все обязательно пришли к консенсусу]
 
 РЕКОМЕНДАЦИЯ:
-(итоговая рекомендация совета, 2-4 строки, конкретно)
+[итоговая рекомендация, 2-4 строки, конкретно]
 
 СЛЕДУЮЩИЙ ШАГ:
-(один конкретный, выполнимый одним человеком за разумный срок шаг)
+[один конкретный, выполнимый одним человеком за разумный срок шаг]
 
-Пиши по-русски, кратко, без воды. Общий объём — не больше 900 символов.
+Пиши по-русски, детально и конкретно — Валик должен реально понимать,
+кто что говорил и почему, а не только итог.
 """
     return await ask(secretary_client, prompt)
 
@@ -189,6 +219,21 @@ async def main():
     print(report)
 
     send_telegram_report(report)
+
+    # "Нанимаем" нового сотрудника на конкретную задачу со "следующего
+    # шага" — он реально копается в коде и присылает отдельный отчёт.
+    print("\n" + "=" * 80)
+    print("Определяем задачу для нового сотрудника...")
+    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
+    task = await extract_next_step(report, secretary_client)
+    print(f"Задача: {task}")
+
+    print("Сотрудник разбирается в коде...")
+    findings = await dispatch_worker(task, BOARD_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
+
+    worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ:\n{task}\n\n{findings}"
+    print(f"\n{worker_message}")
+    send_telegram_report(worker_message)
 
 
 if __name__ == "__main__":
