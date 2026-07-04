@@ -1,0 +1,64 @@
+name: Lab Session
+
+on:
+  schedule:
+    # Проверка 4 раза в день — 8:00, 12:00, 16:00, 20:00 Киев
+    # (5,9,13,17 UTC). Шанс пропуска ниже 50%.
+    - cron: '0 5,9,13,17 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Decide whether to run
+        id: decide
+        run: |
+          ROLL=$(python3 -c "import random; print(random.randint(1, 10))")
+          echo "roll=$ROLL" >> $GITHUB_OUTPUT
+          if [ "$ROLL" -le 5 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run lab session
+        if: steps.decide.outputs.skip == 'false'
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Роster включает совет директоров + код-ревью команду +
+          # правление — всем им нужны их модели, даже если в конкретном
+          # запуске участвует только часть.
+          MODEL_BOARD_MEKHMAT:   ${{ vars.MODEL_BOARD_MEKHMAT }}
+          MODEL_BOARD_FIZTECH:   ${{ vars.MODEL_BOARD_FIZTECH }}
+          MODEL_BOARD_FIZMAT:    ${{ vars.MODEL_BOARD_FIZMAT }}
+          MODEL_BOARD_TEHMAT:    ${{ vars.MODEL_BOARD_TEHMAT }}
+          MODEL_BOARD_SECRETARY: ${{ vars.MODEL_BOARD_SECRETARY }}
+          MODEL_BOARD_AGENDA:    ${{ vars.MODEL_BOARD_AGENDA }}
+          MODEL_CTO:             ${{ vars.MODEL_CTO }}
+          MODEL_BACKEND:         ${{ vars.MODEL_BACKEND }}
+          MODEL_PRODUCT:         ${{ vars.MODEL_PRODUCT }}
+          MODEL_QA:              ${{ vars.MODEL_QA }}
+          MODEL_EXEC_COO:        ${{ vars.MODEL_EXEC_COO }}
+          MODEL_EXEC_HR:         ${{ vars.MODEL_EXEC_HR }}
+        run: python main_lab.py
