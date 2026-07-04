@@ -88,6 +88,12 @@ BOARD_MODEL_ASSIGNMENTS = {
     # "Новый сотрудник" — берётся за конкретную задачу со "следующего
     # шага" заседания, реально копается в коде и пишет детальный отчёт.
     "worker": os.getenv("MODEL_BOARD_WORKER", "gpt-5.4-mini"),
+
+    # Инженерная команда (agents/engineering.py) — РЕАЛЬНО пишет и
+    # коммитит код (в отдельную ветку). Лид — топовая модель, ему
+    # доверена вся техническая глубина; привлечённые инженеры дешевле.
+    "lead_engineer": os.getenv("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.5"),
+    "junior_engineer": os.getenv("MODEL_BOARD_JUNIOR_ENGINEER", "gpt-5.4-mini"),
 }
 
 # --- Правление (agents/executive_board.py, workflows/executive_meeting.py) ---
