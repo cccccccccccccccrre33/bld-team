@@ -21,7 +21,8 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, dispatch_worker, extract_messages, extract_next_step, load_recent_topics, save_topic
+from workflows._common import ask, extract_messages, extract_next_step, load_recent_topics, save_topic
+from workflows.engineering_task import run_engineering_task
 
 MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
 
@@ -220,20 +221,18 @@ async def main():
 
     send_telegram_report(report)
 
-    # "Нанимаем" нового сотрудника на конкретную задачу со "следующего
-    # шага" — он реально копается в коде и присылает отдельный отчёт.
+    # Инженерная команда реально пишет и коммитит код по "следующему
+    # шагу" — в отдельную ветку, Валик сам ревьюит и мержит.
     print("\n" + "=" * 80)
-    print("Определяем задачу для нового сотрудника...")
+    print("Определяем задачу для инженерной команды...")
     secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
     task = await extract_next_step(report, secretary_client)
     print(f"Задача: {task}")
 
-    print("Сотрудник разбирается в коде...")
-    findings = await dispatch_worker(task, BOARD_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
-
-    worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ:\n{task}\n\n{findings}"
-    print(f"\n{worker_message}")
-    send_telegram_report(worker_message)
+    print("Инженерная команда берётся за реализацию...")
+    engineering_report = await run_engineering_task(task)
+    print(f"\n{engineering_report}")
+    send_telegram_report(engineering_report)
 
 
 if __name__ == "__main__":
