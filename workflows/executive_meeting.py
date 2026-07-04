@@ -21,7 +21,7 @@ from agents.executive_board import build_executive_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, extract_messages
+from workflows._common import ask, dispatch_worker, extract_messages, extract_next_step
 
 MAX_MESSAGES = 20
 
@@ -123,11 +123,14 @@ async def compile_report(agenda: str, transcript: list[Message]) -> str:
 [одна строка]
 
 СТЕНОГРАММА:
-[Кратко по каждому реально высказавшемуся участнику: РОЛЬ — суть его
-позиции (1-2 предложения), сохраняя характер и не сглаживая разногласия]
+[По каждому реально высказавшемуся участнику: РОЛЬ — что именно он
+сказал, какой аргумент привёл (не 1 строка "суть позиции", а реально
+опиши мысль и с чем/кем он спорил), сохраняя характер и не сглаживая
+разногласия. Детальность важнее краткости.]
 
 ИТОГ:
-[3-5 предложений — в чём сошлись, в чём разногласия, общая позиция]
+[3-5 предложений — в чём сошлись, в чём остались разногласия, общая
+позиция]
 
 РЕКОМЕНДАЦИЯ:
 [конкретное решение, 2-3 предложения]
@@ -135,7 +138,8 @@ async def compile_report(agenda: str, transcript: list[Message]) -> str:
 СЛЕДУЮЩИЙ ШАГ:
 [одно конкретное действие на неделю]
 
-Пиши по-русски, без воды. Общий объём — не больше 900 символов.
+Пиши по-русски, детально, без воды. Не ограничивай себя коротким
+объёмом — сообщение может быть разбито на части, детальность важнее.
 """
     return await ask(secretary_client, prompt)
 
@@ -163,6 +167,18 @@ async def main():
 
     print(f"\n{'=' * 80}\n{report}")
     send_telegram_report(report)
+
+    print(f"\n{'=' * 80}\nОпределяем задачу для нового сотрудника...")
+    secretary_client = get_chat_client(EXEC_MODEL_ASSIGNMENTS["secretary"])
+    task = await extract_next_step(report, secretary_client)
+    print(f"Задача: {task}")
+
+    print("Сотрудник разбирается...")
+    findings = await dispatch_worker(task, EXEC_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
+
+    worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ:\n{task}\n\n{findings}"
+    print(f"\n{worker_message}")
+    send_telegram_report(worker_message)
 
 
 if __name__ == "__main__":
