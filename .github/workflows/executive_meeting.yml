@@ -1,0 +1,69 @@
+name: Executive Board Meeting
+
+on:
+  schedule:
+    # Одна проверка в сутки — 14:00 по Киеву (11:00 UTC).
+    # Правление собирается реже совета директоров: другой ритм,
+    # бизнес-вопросы не нужно решать дважды в день.
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      agenda:
+        description: 'Тема заседания (оставь пустым — правление выберет само)'
+        required: false
+        default: ''
+
+jobs:
+  meeting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 40% шанс пропуска — правление и так собирается раз в сутки,
+      # не нужно душить его слишком сильно, но защита от 100%-й
+      # предсказуемости/расхода всё равно нужна.
+      - name: Decide whether to meet
+        id: decide
+        run: |
+          ROLL=$(python3 -c "import random; print(random.randint(1, 10))")
+          echo "roll=$ROLL" >> $GITHUB_OUTPUT
+          if [ "$ROLL" -le 4 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Правление решило не собираться сегодня (roll=$ROLL/10)"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Заседание состоится (roll=$ROLL/10)"
+          fi
+
+      - name: Run executive meeting
+        if: steps.decide.outputs.skip == 'false'
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+          MODEL_EXEC_HR:            ${{ vars.MODEL_EXEC_HR }}
+          MODEL_EXEC_COO:           ${{ vars.MODEL_EXEC_COO }}
+          MODEL_EXEC_SECRETARY:     ${{ vars.MODEL_EXEC_SECRETARY }}
+          MODEL_EXEC_AGENDA:        ${{ vars.MODEL_EXEC_AGENDA }}
+        run: |
+          AGENDA="${{ github.event.inputs.agenda }}"
+          if [ -n "$AGENDA" ]; then
+            python main_executive.py "$AGENDA"
+          else
+            python main_executive.py
+          fi
