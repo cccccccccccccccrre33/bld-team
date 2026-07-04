@@ -153,3 +153,106 @@ def grep_repo(repo_name: str, pattern: str, file_glob: str = "*") -> str:
     if len(result) > 5000:
         return result[:5000] + "\n...[результат обрезан]"
     return result
+
+
+# ============================================================
+# Write-инструменты — используются ТОЛЬКО инженерной командой
+# (agents/engineering.py), НЕ советом директоров/код-ревью
+# командой (у тех сознательно нет доступа к записи).
+# Работают всегда в отдельной ветке — прямой пуш в main запрещён
+# на уровне commit_and_push (см. проверку ниже).
+# ============================================================
+
+PROTECTED_BRANCHES = {"main", "master"}
+
+
+def create_branch(repo_name: str, branch_name: str, base: str = "main") -> str:
+    """Создаёт новую ветку от base и переключается на неё. Использовать
+    один раз в начале инженерной задачи.
+
+    Args:
+        repo_name: 'bld-system' или 'bld-panel'.
+        branch_name: имя новой ветки, например 'ai-eng/fix-l7-thresholds'.
+        base: от какой ветки создавать (обычно 'main').
+    """
+    path = _repo_path(repo_name)
+    subprocess.run(["git", "-C", str(path), "fetch", "origin", base], capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(path), "checkout", base], capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(path), "pull", "--ff-only"], capture_output=True, text=True)
+    out = subprocess.run(
+        ["git", "-C", str(path), "checkout", "-b", branch_name],
+        capture_output=True, text=True,
+    )
+    return out.stdout.strip() or out.stderr.strip() or f"Ветка {branch_name} создана и активна"
+
+
+def write_file(repo_name: str, file_path: str, content: str) -> str:
+    """Записывает содержимое в файл репозитория (создаёт файл и папки
+    при необходимости) и добавляет его в git staging (git add).
+    Работает в ТЕКУЩЕЙ ветке — обязательно сначала вызови create_branch,
+    иначе рискуешь записать прямо в main.
+
+    Args:
+        repo_name: 'bld-system' или 'bld-panel'.
+        file_path: путь к файлу относительно корня репозитория.
+        content: полное новое содержимое файла.
+    """
+    path = _repo_path(repo_name)
+
+    current_branch = subprocess.run(
+        ["git", "-C", str(path), "branch", "--show-current"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if current_branch in PROTECTED_BRANCHES:
+        return (
+            f"ОТКАЗ: текущая ветка '{current_branch}' защищена. "
+            "Сначала вызови create_branch, чтобы создать рабочую ветку."
+        )
+
+    full_path = path / file_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "-C", str(path), "add", file_path], capture_output=True, text=True)
+    return f"Записан файл {file_path} ({len(content)} символов) в ветке {current_branch}"
+
+
+def commit_and_push(repo_name: str, branch_name: str, commit_message: str) -> str:
+    """Коммитит застейдженные изменения (после write_file) и пушит
+    ветку в origin. ОТКАЗЫВАЕТ, если текущая ветка — main/master —
+    прямой пуш в защищённые ветки запрещён.
+
+    Args:
+        repo_name: 'bld-system' или 'bld-panel'.
+        branch_name: имя ветки, которую нужно запушить (должна уже
+            быть текущей после create_branch).
+        commit_message: сообщение коммита.
+    """
+    path = _repo_path(repo_name)
+
+    current_branch = subprocess.run(
+        ["git", "-C", str(path), "branch", "--show-current"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if current_branch in PROTECTED_BRANCHES:
+        return f"ОТКАЗ: нельзя пушить напрямую в '{current_branch}'."
+
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "bld-team-engineer"], capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "bld-team-engineer@users.noreply.github.com"],
+        capture_output=True, text=True,
+    )
+    commit_out = subprocess.run(
+        ["git", "-C", str(path), "commit", "-m", commit_message],
+        capture_output=True, text=True,
+    )
+    if commit_out.returncode != 0 and "nothing to commit" not in commit_out.stdout:
+        return f"Ошибка коммита: {commit_out.stdout.strip() or commit_out.stderr.strip()}"
+
+    push_out = subprocess.run(
+        ["git", "-C", str(path), "push", "-u", "origin", current_branch],
+        capture_output=True, text=True,
+    )
+    return (
+        f"commit: {commit_out.stdout.strip() or '(нечего коммитить)'}\n"
+        f"push: {push_out.stdout.strip() or push_out.stderr.strip()}"
+    )
