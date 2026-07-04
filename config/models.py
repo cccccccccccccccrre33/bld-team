@@ -84,6 +84,10 @@ BOARD_MODEL_ASSIGNMENTS = {
     # Формулирует повестку — реально копается в коде через tools,
     # нужна модель, которая нормально работает с git_log/grep_repo.
     "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "gpt-5.2"),
+
+    # "Новый сотрудник" — берётся за конкретную задачу со "следующего
+    # шага" заседания, реально копается в коде и пишет детальный отчёт.
+    "worker": os.getenv("MODEL_BOARD_WORKER", "gpt-5.4-mini"),
 }
 
 # --- Правление (agents/executive_board.py, workflows/executive_meeting.py) ---
@@ -93,4 +97,5 @@ EXEC_MODEL_ASSIGNMENTS = {
     "hr": os.getenv("MODEL_EXEC_HR", "gpt-5.4-mini"),
     "secretary": os.getenv("MODEL_EXEC_SECRETARY", "gpt-5.4-nano"),
     "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "gpt-5.4-nano"),
+    "worker": os.getenv("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
 }
