@@ -14,6 +14,12 @@ on:
         required: false
         default: ''
 
+# Нужно для того, чтобы workflow мог закоммитить файл памяти тем
+# (.state/board_topics.json) обратно в этот же репозиторий — чтобы
+# совет не повторял одну и ту же тему заседание за заседанием.
+permissions:
+  contents: write
+
 jobs:
   meeting:
     runs-on: ubuntu-latest
