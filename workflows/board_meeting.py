@@ -19,6 +19,7 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.board import build_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
+from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
 from workflows._common import ask, extract_messages
 
@@ -32,15 +33,24 @@ ROLE_LABELS = {
     "secretary": "📋 Секретарь",
 }
 
-DEFAULT_AGENDA_HINTS = """
-Примеры направлений (выбери или придумай актуальнее):
-- Как получить первого платящего клиента BLD в ближайшие 4-6 недель.
-- Стоит ли вести три проекта параллельно или сузить фокус до одного.
-- Когда и на каких условиях искать сооснователя — и нужен ли он вообще.
-- Bootstrapped-рост vs внешние инвестиции на текущей стадии.
-- Что заморозить/закрыть если ресурс (время одного человека) не резиновый.
-- Как выстроить воронку продаж BLD не имея отдела продаж.
-- Правильная ли ценовая модель BLD для украинского рынка прямо сейчас.
+AGENDA_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
+
+AGENDA_SCOPE = """
+Про зону обсуждения: Совет директоров — в первую очередь техническое
+обсуждение по проекту BLD System (оба репозитория: bld-system и
+bld-panel) — архитектура, надёжность, anomaly detection engine,
+качество кода, технический долг, готовность к росту нагрузки.
+
+Тему выбираешь ты сам, свободно — глядя в реальный код, а не по
+шаблону. Если в процессе всплывает деловой угол (например: "это
+техническое решение упирается в то, что мы пока не знаем реальных
+объёмов данных от клиентов" или "эта надёжность системы важна именно
+потому что от неё зависит доверие первого клиента") — это нормально,
+можно затронуть, но по-настоящему деловые темы (продажи, цены,
+приоритеты между BLD/Хвилей/Нейробаристой, привлечение инвестиций)
+не должны становиться ГЛАВНОЙ темой заседания — для этого есть
+отдельный орган, Правление. Изредка такой угол уместен как часть
+технического разговора, но не как самоцель.
 """
 
 
@@ -49,16 +59,25 @@ async def find_agenda(cli_hint: str | None) -> str:
         return cli_hint.strip()
 
     client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["agenda_setter"])
+    agenda_agent = client.as_agent(
+        name="agenda_setter",
+        instructions="Формулируешь техническую повестку для совета директоров на основе реального кода.",
+        tools=AGENDA_TOOLS,
+    )
     prompt = f"""
 {COMPANY_CONTEXT}
-{DEFAULT_AGENDA_HINTS}
+{AGENDA_SCOPE}
 
-Сформулируй ОДИН острый стратегический вопрос для заседания совета.
-Вопрос должен быть конкретным и требовать реального решения прямо сейчас,
-а не абстрактным рассуждением о будущем.
+Загляни в реальный код (git_log, grep_repo, read_file по bld-system и
+bld-panel), найди что-то конкретное, за что можно зацепиться, и сам
+сформулируй ОДИН острый вопрос для заседания совета — какой сочтёшь
+наиболее актуальным именно сейчас, глядя на реальное состояние кода.
+Не подгоняй под шаблон — тема должна родиться из того, что ты реально
+увидел в коде.
 Ответь ТОЛЬКО самим вопросом, без преамбулы и кавычек.
 """
-    return await ask(client, prompt)
+    response = await agenda_agent.run(prompt)
+    return response.text.strip()
 
 
 def build_board_workflow(board: dict):
@@ -141,6 +160,9 @@ async def compile_report(agenda: str, transcript: list[Message]) -> str:
 
 async def main():
     cli_hint = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else None
+
+    print("Синхронизация репозиториев...")
+    print(clone_or_update_repos())
 
     print("Формулируем повестку заседания...")
     agenda = await find_agenda(cli_hint)
