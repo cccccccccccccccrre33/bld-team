@@ -26,25 +26,25 @@ import os
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": os.getenv("MODEL_CTO", "o3"),
+    "cto": os.getenv("MODEL_CTO", "grok-4.3"),
 
     # Дотошный сильный синьор-бэкендер — ищет логические дыры,
     # любит математически обосновывать возражения
-    "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.1"),
+    "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.5"),
 
     # Продукт / фронт / UX — топит за пользователя и скорость выхода
-    "product_frontend": os.getenv("MODEL_PRODUCT", "gpt-5.4-mini"),
+    "product_frontend": os.getenv("MODEL_PRODUCT", "gpt-5.4"),
 
     # QA / Security — параноик, ищет edge-cases и дыры в безопасности
-    "qa_security": os.getenv("MODEL_QA", "gpt-5.1"),
+    "qa_security": os.getenv("MODEL_QA", "DeepSeek-V4-Pro"),
 
     # Не участник дискуссии — "руки", читающие репозиторий по запросу
     # любого агента. Заточен под код, не под рассуждения.
-    "code_scout": os.getenv("MODEL_CODE_SCOUT", "gpt-5.3-codex"),
+    "code_scout": os.getenv("MODEL_CODE_SCOUT", "DeepSeek-V4-Pro"),
 
     # Модератор GroupChat — выбирает кто говорит следующим.
     # Не должен быть дорогой моделью, это чисто роутинг.
-    "moderator": os.getenv("MODEL_MODERATOR", "gpt-5.4-mini"),
+    "moderator": os.getenv("MODEL_MODERATOR", "gpt-5.4"),
 }
 
 # Эндпоинт Azure AI Foundry (project endpoint, не resource endpoint!)
@@ -72,13 +72,23 @@ OFFICE_MODEL_ASSIGNMENTS = {
 # Всем ролям тут не нужна codex-модель (нет grep/diff), но нужна
 # сильная рассуждающая модель — споры содержательные, не косметические.
 BOARD_MODEL_ASSIGNMENTS = {
-    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "o3"),
-    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.1"),
-    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "o3"),
-    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.1"),
+    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "grok-4.3"),
+    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.5"),
+    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "DeepSeek-V4-Pro"),
+    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.4"),
     # Секретарь: ведёт заседание (кто говорит следующим) и в конце сam
     # сжимает итог в отчёт для Telegram — не должен быть дорогой моделью.
-    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4-mini"),
+    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4"),
     # Формулирует повестку дня (тему заседания), если не задана вручную.
-    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "gpt-5.4-mini"),
+    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "DeepSeek-V4-Pro"),
+}
+
+# --- Правление (agents/executive_board.py, workflows/executive_meeting.py) ---
+# Только COO и HR — остальные бизнес-роли (Sales/Marketing/CFO/Legal)
+# оказались избыточны на практике, убраны по фидбеку.
+EXEC_MODEL_ASSIGNMENTS = {
+    "coo": os.getenv("MODEL_EXEC_COO", "gpt-5.4"),
+    "hr": os.getenv("MODEL_EXEC_HR", "gpt-5.5"),
+    "secretary": os.getenv("MODEL_EXEC_SECRETARY", "gpt-5.4"),
+    "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "DeepSeek-V4-Pro"),
 }
