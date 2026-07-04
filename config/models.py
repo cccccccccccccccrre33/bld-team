@@ -3,19 +3,31 @@
 
 ВАЖНО: значения ниже — это deployment names, которые ДОЛЖНЫ существовать
 в твоём Azure AI Foundry проекте (как ты их назвал при деплое модели).
-Если у тебя deployment называется иначе (например "gpt-51-prod" вместо
-"gpt-5.1") — поправь строки ниже, а не код агентов.
 
-Логика распределения:
-- CTO / Backend / QA — нужна максимальная глубина рассуждений, споры идут
-  на уровне архитектурных решений и рисков => топовые reasoning-модели.
-- Frontend/Product — нужна скорость и "человеческий" продуктовый голос,
-  не обязательна максимальная глубина => быстрая, но грамотная модель.
-- Code Scout — не участвует в споре, его работа — копаться в репо
-  (читать файлы, диффы, грепать) => модель, заточенная под код,
-  а не под "красивые" рассуждения.
-- Moderator (manager в GroupChat) — не имеет своего мнения о проекте,
-  просто решает кто говорит следующим => дешёвая/быстрая модель достаточно.
+История: изначально тут были смешаны сторонние модели (grok-4.3,
+DeepSeek-V4-Pro) с настоящими Azure OpenAI (gpt-5.4, gpt-5.5). На
+практике сторонние модели через маркетплейс Foundry падают с 500-й
+ошибкой — библиотека agent-framework обращается к ним через т.н.
+Responses API, который сторонние модели (не-OpenAI) в большинстве
+случаев не поддерживают, только настоящие Azure OpenAI deployment'ы.
+Поэтому теперь везде используются ТОЛЬКО модели линейки gpt-5.x —
+разного веса, чтобы держать баланс между качеством и стоимостью.
+
+Уровни нагрузки (от дорогого к дешёвому):
+- gpt-5.5       — самый дорогой и сильный. Только для ролей, где
+                  реально нужна максимальная глубина рассуждений.
+- gpt-5.4       — сильная модель, дешевле 5.5. Для ролей с серьёзной
+                  содержательной нагрузкой, но не топовых.
+- gpt-5.4-mini  — средний уровень. Для ролей, где нужна вменяемость,
+                  но не крайняя строгость.
+- gpt-5.4-nano  — самый дешёвый. Для чисто роутинговых/технических
+                  ролей (модератор, секретарь, лёгкий чат).
+- gpt-5.2  — отдельно для ролей, которым нужно РЕАЛЬНО читать код
+                  через tools (git_log, grep_repo) — работает с этим
+                  надёжно и дешевле топовых моделей.
+
+Если задеплоишь другие названия — задай через переменные окружения
+(см. .env.example), дефолты ниже менять не обязательно.
 """
 
 import os
@@ -26,69 +38,59 @@ import os
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": os.getenv("MODEL_CTO", "grok-4.3"),
+    "cto": os.getenv("MODEL_CTO", "gpt-5.4"),
 
-    # Дотошный сильный синьор-бэкендер — ищет логические дыры,
-    # любит математически обосновывать возражения
-    "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.5"),
+    # Дотошный сильный синьор-бэкендер
+    "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.4-mini"),
 
-    # Продукт / фронт / UX — топит за пользователя и скорость выхода
-    "product_frontend": os.getenv("MODEL_PRODUCT", "gpt-5.4"),
+    # Продукт / фронт / UX — не нужна максимальная глубина
+    "product_frontend": os.getenv("MODEL_PRODUCT", "gpt-5.4-nano"),
 
-    # QA / Security — параноик, ищет edge-cases и дыры в безопасности
-    "qa_security": os.getenv("MODEL_QA", "DeepSeek-V4-Pro"),
+    # QA / Security — параноик, ищет edge-cases
+    "qa_security": os.getenv("MODEL_QA", "gpt-5.4-mini"),
 
-    # Не участник дискуссии — "руки", читающие репозиторий по запросу
-    # любого агента. Заточен под код, не под рассуждения.
-    "code_scout": os.getenv("MODEL_CODE_SCOUT", "DeepSeek-V4-Pro"),
+    # Не участник дискуссии — "руки", читающие репозиторий.
+    "code_scout": os.getenv("MODEL_CODE_SCOUT", "gpt-5.2"),
 
-    # Модератор GroupChat — выбирает кто говорит следующим.
-    # Не должен быть дорогой моделью, это чисто роутинг.
-    "moderator": os.getenv("MODEL_MODERATOR", "gpt-5.4"),
+    # Модератор GroupChat — чисто роутинг, дешёвая модель.
+    "moderator": os.getenv("MODEL_MODERATOR", "gpt-5.4-nano"),
 }
 
 # Эндпоинт Azure AI Foundry (project endpoint, не resource endpoint!)
 FOUNDRY_PROJECT_ENDPOINT = os.getenv("FOUNDRY_PROJECT_ENDPOINT", "")
 
 # --- Офисные посиделки (agents/office_chat.py, workflows/office_chat.py) ---
-# Неформальный чат с РЕАЛЬНЫМ доступом к коду (те же tools что у team.py),
-# но без структуры формального код-ревью — просто "коллеги обсуждают
-# что-то интересное в проекте". По умолчанию использует модели, которые
-# уже задеплоены (grok-4.3, DeepSeek-V4-Pro, gpt-5.5, gpt-5.4) — чтобы
-# работало сразу без дополнительных деплоев в Foundry.
+# Неформальный чат — самая дешёвая ветка, тут не нужна глубина.
 OFFICE_MODEL_ASSIGNMENTS = {
-    "cto": os.getenv("MODEL_OFFICE_CTO", "grok-4.3"),
-    "backend_senior": os.getenv("MODEL_OFFICE_BACKEND", "gpt-5.5"),
-    "product_frontend": os.getenv("MODEL_OFFICE_PRODUCT", "gpt-5.4"),
-    "qa_security": os.getenv("MODEL_OFFICE_QA", "DeepSeek-V4-Pro"),
-    # Ведёт очередность реплик в чате — дешёвая роутинг-роль
-    "moderator": os.getenv("MODEL_OFFICE_MODERATOR", "gpt-5.4"),
-    # "Искра" — тот, кто первым копается в репо и находит повод для разговора
-    "spark": os.getenv("MODEL_OFFICE_SPARK", "DeepSeek-V4-Pro"),
+    "cto": os.getenv("MODEL_OFFICE_CTO", "gpt-5.4-nano"),
+    "backend_senior": os.getenv("MODEL_OFFICE_BACKEND", "gpt-5.4-nano"),
+    "product_frontend": os.getenv("MODEL_OFFICE_PRODUCT", "gpt-5.4-nano"),
+    "qa_security": os.getenv("MODEL_OFFICE_QA", "gpt-5.4-nano"),
+    "moderator": os.getenv("MODEL_OFFICE_MODERATOR", "gpt-5.4-nano"),
+    # "Искра" реально копается в коде через tools — нужна модель получше
+    "spark": os.getenv("MODEL_OFFICE_SPARK", "gpt-5.2"),
 }
 
 # --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
-# Отдельная команда, не трогает код — только стратегическое обсуждение.
-# Всем ролям тут не нужна codex-модель (нет grep/diff), но нужна
-# сильная рассуждающая модель — споры содержательные, не косметические.
+# Чисто техническая экспертиза по BLD System. Мехмат — самый строгий
+# теоретик, ему топовая модель; остальным — по убыванию нагрузки.
 BOARD_MODEL_ASSIGNMENTS = {
-    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "grok-4.3"),
-    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.5"),
-    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "DeepSeek-V4-Pro"),
-    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.4"),
-    # Секретарь: ведёт заседание (кто говорит следующим) и в конце сam
-    # сжимает итог в отчёт для Telegram — не должен быть дорогой моделью.
-    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4"),
-    # Формулирует повестку дня (тему заседания), если не задана вручную.
-    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "DeepSeek-V4-Pro"),
+    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "gpt-5.5"),
+    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.4"),
+    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "gpt-5.4"),
+    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.4-mini"),
+    # Секретарь: ведёт заседание и сжимает итог в отчёт для Telegram.
+    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4-mini"),
+    # Формулирует повестку — реально копается в коде через tools,
+    # нужна модель, которая нормально работает с git_log/grep_repo.
+    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "gpt-5.2"),
 }
 
 # --- Правление (agents/executive_board.py, workflows/executive_meeting.py) ---
-# Только COO и HR — остальные бизнес-роли (Sales/Marketing/CFO/Legal)
-# оказались избыточны на практике, убраны по фидбеку.
+# Только COO и HR — остальные бизнес-роли убраны по фидбеку.
 EXEC_MODEL_ASSIGNMENTS = {
-    "coo": os.getenv("MODEL_EXEC_COO", "gpt-5.4"),
-    "hr": os.getenv("MODEL_EXEC_HR", "gpt-5.5"),
-    "secretary": os.getenv("MODEL_EXEC_SECRETARY", "gpt-5.4"),
-    "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "DeepSeek-V4-Pro"),
+    "coo": os.getenv("MODEL_EXEC_COO", "gpt-5.4-mini"),
+    "hr": os.getenv("MODEL_EXEC_HR", "gpt-5.4-mini"),
+    "secretary": os.getenv("MODEL_EXEC_SECRETARY", "gpt-5.4-nano"),
+    "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "gpt-5.4-nano"),
 }
