@@ -1,0 +1,57 @@
+name: HR Check-in
+
+on:
+  schedule:
+    # Раз в сутки — 17:00 Киев (14:00 UTC)
+    - cron: '0 14 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 50% шанс пропуска — не каждый день нужен чек-ин
+      - name: Decide whether to run
+        id: decide
+        run: |
+          ROLL=$(python3 -c "import random; print(random.randint(1, 10))")
+          if [ "$ROLL" -le 5 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run HR check-in
+        if: steps.decide.outputs.skip == 'false'
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+          MODEL_BOARD_MEKHMAT:   ${{ vars.MODEL_BOARD_MEKHMAT }}
+          MODEL_BOARD_FIZTECH:   ${{ vars.MODEL_BOARD_FIZTECH }}
+          MODEL_BOARD_FIZMAT:    ${{ vars.MODEL_BOARD_FIZMAT }}
+          MODEL_BOARD_TEHMAT:    ${{ vars.MODEL_BOARD_TEHMAT }}
+          MODEL_CTO:             ${{ vars.MODEL_CTO }}
+          MODEL_BACKEND:         ${{ vars.MODEL_BACKEND }}
+          MODEL_PRODUCT:         ${{ vars.MODEL_PRODUCT }}
+          MODEL_QA:              ${{ vars.MODEL_QA }}
+          MODEL_EXEC_COO:        ${{ vars.MODEL_EXEC_COO }}
+          MODEL_EXEC_HR:         ${{ vars.MODEL_EXEC_HR }}
+        run: python main_hr_checkin.py
