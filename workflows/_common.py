@@ -7,6 +7,7 @@ board_meeting, office_chat) — чтобы не дублировать одно 
 from typing import Any
 import json
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from agent_framework import Message
@@ -162,6 +163,27 @@ async def extract_next_step(report_text: str, client) -> str:
     return await ask(client, prompt)
 
 
+# Фразы-маркеры того, что отчёт/задача на самом деле не осмысленная
+# постановка, а мета-жалоба модели на нехватку данных (например, когда
+# стенограмма пришла пустой/повреждённой). Если это проскочило в
+# "следующий шаг" — нельзя нести это инженерной команде, она честно
+# попытается это "реализовать" (см. инцидент с ложной веткой в
+# bld-system, где лид-инженер добавил в бота классификатор интентов,
+# реагирующий на просьбу прислать стенограмму — вместо реальной фичи).
+_META_COMPLAINT_MARKERS = [
+    "пришлите", "пришли текст", "нет стенограммы", "нет самой стенограммы",
+    "у меня нет", "нет данных для", "не хватает данных", "отсутствует стенограмма",
+    "нет реальных реплик", "нет текста стенограммы",
+]
+
+
+def looks_like_meta_complaint(text: str) -> bool:
+    """True, если текст похож на жалобу модели ('пришлите стенограмму'),
+    а не на реальную постановку задачи."""
+    lowered = text.lower()
+    return any(marker in lowered for marker in _META_COMPLAINT_MARKERS)
+
+
 async def dispatch_worker(task: str, model_name: str, project_context: str) -> str:
     """"Нанимает" одного специалиста под конкретную задачу — свежий Agent
     с реальным доступом к коду (bld-system, bld-panel), который реально
@@ -197,3 +219,55 @@ read_file, git_log, git_diff, grep_repo) — используй их, ЕСЛИ �
     )
     response = await worker.run(f"Твоя задача: {task}\n\nРазберись в реальном коде и напиши отчёт.")
     return response.text.strip()
+
+
+async def curate_knowledge(source_label: str, content: str) -> None:
+    """Knowledge Curator — редкий гибрид: инженер, который добровольно
+    ведёт вики компании. После каждого значимого события (заседание,
+    инженерная задача, лаборатория) добавляет ОДНУ короткую запись в
+    постоянную базу знаний (.state/company_wiki.md) — что решено и
+    почему, без пересказа всей дискуссии. Дешёвая модель, чистая
+    суммаризация — цель не решать, а фиксировать уже решённое, чтобы
+    через полгода можно было понять, почему систему сделали именно так.
+
+    Как и save_topic(), коммитит файл обратно в репозиторий bld-team.
+    Если коммит/пуш не удался — печатает предупреждение, не падает.
+    """
+    from config.client_factory import get_chat_client
+    from config.models import KNOWLEDGE_CURATOR_MODEL
+
+    client = get_chat_client(KNOWLEDGE_CURATOR_MODEL)
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    prompt = f"""
+Вот результат события "{source_label}" от {now}:
+
+{content}
+
+Составь ОДНУ короткую запись для постоянной базы знаний компании —
+markdown, 3-5 строк, без вступлений и воды. Формат СТРОГО такой:
+
+### {source_label} — {now}
+- Решение/находка: [одна строка по существу]
+- Причина: [одна строка — почему именно так]
+- Открытый вопрос/риск: [одна строка, если есть; если нет — не пиши эту строку вообще]
+"""
+    entry = await ask(client, prompt)
+
+    STATE_DIR.mkdir(exist_ok=True)
+    wiki_path = STATE_DIR / "company_wiki.md"
+    existing = wiki_path.read_text(encoding="utf-8") if wiki_path.exists() else "# Вики компании BLD\n"
+    wiki_path.write_text(existing.rstrip() + "\n\n" + entry.strip() + "\n", encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(wiki_path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"docs: вики — {source_label}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[knowledge curator] Не удалось сохранить вики в git: {e}")
