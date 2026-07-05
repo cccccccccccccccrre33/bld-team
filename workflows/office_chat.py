@@ -22,9 +22,9 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.office_chat import build_office_chat_team, CONTEXT_PREAMBLE
 from config.client_factory import get_chat_client
 from config.models import OFFICE_MODEL_ASSIGNMENTS
-from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, extract_messages
+from workflows._common import ask, extract_messages, sync_repos_or_alert
 
 MAX_MESSAGES = 12  # это чат, не заседание — держим коротко
 
@@ -155,7 +155,8 @@ async def main():
     repo_hint = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ("bld-system", "bld-panel") else None
 
     print("Клонируем/обновляем репозитории...")
-    print(clone_or_update_repos())
+    if not await sync_repos_or_alert():
+        return
 
     print("Ищем повод для разговора...")
     starter_role, spark_line = await find_spark(repo_hint)
