@@ -25,9 +25,9 @@ from agent_framework import Message
 from agents.roster import CODE_ACCESS_ROLES, build_full_roster
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, run_free_conversation
+from workflows._common import ask, run_free_conversation, sync_repos_or_alert
 
 MAX_TURNS = 10  # раунды разговора в паре/тройке — короче группового заседания
 
@@ -140,7 +140,8 @@ async def main():
     repo_hint = sys.argv[1] if len(sys.argv) > 1 else None
     if repo_hint:
         print("Синхронизация репозиториев (запрошен доступ к коду)...")
-        print(clone_or_update_repos())
+        if not await sync_repos_or_alert():
+            return
 
     roster = build_full_roster()
     group_names = pick_group(roster)
@@ -150,7 +151,8 @@ async def main():
     # синхронизируем репозитории (могут понадобиться tools).
     if any(n in CODE_ACCESS_ROLES for n in group_names) and not repo_hint:
         print("Синхронизация репозиториев...")
-        print(clone_or_update_repos())
+        if not await sync_repos_or_alert():
+            return
 
     problem = await find_problem(group_names)
     print(f"\nПроблема:\n{problem}\n{'=' * 60}")
