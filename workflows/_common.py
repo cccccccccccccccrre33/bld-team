@@ -87,6 +87,38 @@ def save_topic(state_file: str, topic: str) -> None:
         print(f"[topic memory] Не удалось сохранить тему в git: {e}")
 
 
+async def sync_repos_or_alert() -> bool:
+    """Синхронизирует bld-system/bld-panel перед началом сессии.
+
+    Раньше clone_or_update_repos() при провале клонирования просто
+    печатала текст ошибки и работа продолжалась с уже сломанными tools
+    (агенты получали 'путь не найден' на ровном месте, без объяснения
+    причины). Теперь при сбое:
+    1) сырая git-ошибка сразу летит в Telegram, а не тонет в логах Actions;
+    2) сессия (заседание/чат/лаба) не запускается вслепую поверх
+       наполовину доступного кода.
+
+    Возвращает True, если можно продолжать, False - если нужно прервать
+    workflow прямо здесь (вызывающий код должен сделать `return`).
+    """
+    from tools.repo_tools import clone_or_update_repos, RepoSyncError
+    from tools.telegram_report import send_telegram_report
+
+    try:
+        print(clone_or_update_repos())
+        return True
+    except RepoSyncError as e:
+        alert = (
+            "⚠️ РЕПОЗИТОРИИ НЕДОСТУПНЫ — сессия отменена\n\n"
+            f"{e}\n\n"
+            "Обсуждать код, который не виден, нет смысла — эта сессия "
+            "пропущена, следующая запустится по расписанию как обычно."
+        )
+        print(alert)
+        send_telegram_report(alert)
+        return False
+
+
 async def run_free_conversation(
     participants: list,
     opening_prompt: str,
