@@ -14,8 +14,9 @@ import re
 import sys
 from datetime import datetime
 
-from agents.engineering import build_junior_engineer, build_lead_engineer
-from config.models import BOARD_MODEL_ASSIGNMENTS
+from agents.engineering import build_lead_engineer, build_specialist_pool
+from agents.global_geniuses import GLOBAL_LABELS, SPECIALTY_KEYWORDS
+from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS
 from tools.repo_tools import commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
 from workflows._common import sync_repos_or_alert
@@ -26,7 +27,7 @@ from workflows._common import sync_repos_or_alert
 HELP_KEYWORDS = [
     "привлек", "привлёк", "нужна помощь", "разбил", "разбить",
     "второй инженер", "инженер 2", "junior", "ещё одного инженера",
-    "потребуется ещё", "не справлюсь один",
+    "потребуется ещё", "не справлюсь один", "нужен специалист",
 ]
 
 
@@ -42,6 +43,15 @@ def guess_repo(task: str) -> str:
     if any(kw in lowered for kw in ["панел", "фронт", "react", "ui", "интерфейс"]):
         return "bld-panel"
     return "bld-system"
+
+
+def find_matching_specialists(text: str, max_specialists: int = 2) -> list[str]:
+    """По ключевым словам определяет, чья специализация подходит под
+    описанную лидом оставшуюся работу — максимум max_specialists штук,
+    чтобы не разводить бесконечный найм."""
+    lowered = text.lower()
+    matches = [name for name, kws in SPECIALTY_KEYWORDS.items() if any(kw in lowered for kw in kws)]
+    return matches[:max_specialists]
 
 
 async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
@@ -68,10 +78,19 @@ async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
     findings = [f"👷‍♂️ Ведущий инженер ({lead_model}):\n{lead_summary}"]
 
     if any(kw in lead_summary.lower() for kw in HELP_KEYWORDS):
-        print("Ведущий инженер запросил помощь — привлекаем ещё инженера...")
-        junior_model = BOARD_MODEL_ASSIGNMENTS.get("junior_engineer", "gpt-5.4-mini")
-        junior = build_junior_engineer(junior_model, 2)
-        junior_prompt = f"""
+        matched_names = find_matching_specialists(lead_summary, max_specialists=2)
+        if not matched_names:
+            import random
+            matched_names = [random.choice(list(SPECIALTY_KEYWORDS.keys()))]
+
+        print(f"Ведущий инженер запросил помощь — нанимаем: {', '.join(matched_names)}...")
+        pool = build_specialist_pool()
+
+        for name in matched_names:
+            specialist = pool[name]
+            label = GLOBAL_LABELS.get(name, name)
+            model_name = GLOBAL_MODEL_ASSIGNMENTS.get(name, "?")
+            specialist_prompt = f"""
 Ведущий инженер оставил такое описание задачи и своей части работы:
 
 {lead_summary}
@@ -79,11 +98,12 @@ async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
 Полная исходная задача: {task}
 Репозиторий: {repo_name}, ветка {branch_name} (уже текущая).
 
-Определи, какая часть работы описана как оставшаяся, и реализуй её
-через write_file.
+Ты привлечён именно потому, что часть оставшейся работы совпадает с
+твоей специализацией. Определи свою часть и реализуй её через
+write_file.
 """
-        junior_response = await junior.run(junior_prompt)
-        findings.append(f"👷 Инженер #2 ({junior_model}):\n{junior_response.text.strip()}")
+            specialist_response = await specialist.run(specialist_prompt)
+            findings.append(f"{label} ({model_name}):\n{specialist_response.text.strip()}")
 
     print("Коммитим и пушим изменения...")
     push_result = commit_and_push(repo_name, branch_name, f"AI engineering: {task[:60]}")
