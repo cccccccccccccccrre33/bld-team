@@ -22,8 +22,8 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import MODEL_ASSIGNMENTS
-from tools.repo_tools import clone_or_update_repos, git_log
-from workflows._common import ask, extract_messages
+from tools.repo_tools import git_log
+from workflows._common import ask, extract_messages, sync_repos_or_alert
 
 MAX_MESSAGES = 24  # защита от бесконечного спора / траты кредитов
 
@@ -100,7 +100,8 @@ def build_discussion_workflow(team: dict):
 
 async def main():
     print("Синхронизация репозиториев...")
-    print(clone_or_update_repos())
+    if not await sync_repos_or_alert():
+        return
 
     print("\nИщем повод для дискуссии в git log...")
     topic = await find_discussion_topic()
