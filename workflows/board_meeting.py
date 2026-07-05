@@ -19,9 +19,9 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.board import build_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import clone_or_update_repos, git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, extract_messages, extract_next_step, load_recent_topics, save_topic
+from workflows._common import ask, extract_messages, extract_next_step, load_recent_topics, save_topic, sync_repos_or_alert
 from workflows.engineering_task import run_engineering_task
 
 MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
@@ -193,7 +193,8 @@ async def main():
     cli_hint = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else None
 
     print("Синхронизация репозиториев...")
-    print(clone_or_update_repos())
+    if not await sync_repos_or_alert():
+        return
 
     print("Формулируем повестку заседания...")
     agenda = await find_agenda(cli_hint)
