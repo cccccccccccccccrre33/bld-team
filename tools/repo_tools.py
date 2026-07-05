@@ -39,14 +39,27 @@ def _repo_path(repo_name: str) -> Path:
     return WORKDIR / repo_name
 
 
+class RepoSyncError(RuntimeError):
+    """Хотя бы один репозиторий не удалось склонировать/обновить.
+    Содержит человекочитаемую сводку по каждому упавшему репо."""
+
+
 def clone_or_update_repos() -> str:
     """Клонирует оба репозитория (если их ещё нет локально) или делает
     git pull (если уже клонированы). Вызывается один раз при старте
-    программы, не является tool для агентов."""
+    программы, не является tool для агентов.
+
+    ВАЖНО: если клонирование/пулл хотя бы одного репозитория падает
+    (returncode != 0), эта функция бросает RepoSyncError с сырым текстом
+    git-ошибки. Раньше ошибка просто складывалась в текст лога и работа
+    продолжалась как ни в чём не бывало — из-за этого агенты получали
+    рабочую директорию без репозитория и не понимали, что происходит.
+    """
     if not GITHUB_TOKEN:
         raise RuntimeError("GITHUB_TOKEN не задан в окружении.")
     WORKDIR.mkdir(parents=True, exist_ok=True)
     results = []
+    failures = []
     for name, repo_url in REPOS.items():
         path = WORKDIR / name
         auth_url = f"https://{GITHUB_TOKEN}@{repo_url}"
@@ -60,8 +73,23 @@ def clone_or_update_repos() -> str:
                 ["git", "clone", auth_url, str(path)],
                 capture_output=True, text=True,
             )
-        results.append(f"{name}: {out.stdout.strip() or out.stderr.strip()}")
-    return "\n".join(results)
+        # Токен никогда не попадает в message - берём только stdout/stderr git,
+        # а не auth_url.
+        message = out.stdout.strip() or out.stderr.strip() or "OK"
+        results.append(f"{name}: {message}")
+        if out.returncode != 0:
+            failures.append(f"{name}: {message}")
+
+    summary = "\n".join(results)
+    if failures:
+        raise RepoSyncError(
+            summary
+            + "\n\nПроверь: 1) репозиторий существует под этим именем на GitHub; "
+              "2) GITHUB_TOKEN/BLD_REPOS_PAT имеет доступ именно к этому репо "
+              "(для fine-grained PAT — он должен быть явно выбран в списке "
+              "разрешённых репозиториев, а не просто 'Contents: Read/Write')."
+        )
+    return summary
 
 
 def list_repo_files(repo_name: str, subpath: str = ".") -> str:
@@ -170,19 +198,49 @@ def create_branch(repo_name: str, branch_name: str, base: str = "main") -> str:
     """Создаёт новую ветку от base и переключается на неё. Использовать
     один раз в начале инженерной задачи.
 
+    Идемпотентно: повторный вызов с тем же branch_name безопасен и не
+    откатывает репозиторий на base. Раньше повторный вызов (например, если
+    агент по ошибке зовёт create_branch дважды за одну задачу) сначала
+    переключал репо на base, а затем 'checkout -b' падал с 'branch already
+    exists' — в итоге репозиторий тихо оставался на base/main, и следующий
+    write_file упирался в защиту протектед-ветки, хотя по логам задача
+    была на нужной фиче-ветке.
+
     Args:
         repo_name: 'bld-system' или 'bld-panel'.
         branch_name: имя новой ветки, например 'ai-eng/fix-l7-thresholds'.
         base: от какой ветки создавать (обычно 'main').
     """
     path = _repo_path(repo_name)
+
+    current = subprocess.run(
+        ["git", "-C", str(path), "branch", "--show-current"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if current == branch_name:
+        return f"Уже на ветке {branch_name} — повторный create_branch пропущен, base не трогали."
+
     subprocess.run(["git", "-C", str(path), "fetch", "origin", base], capture_output=True, text=True)
     subprocess.run(["git", "-C", str(path), "checkout", base], capture_output=True, text=True)
     subprocess.run(["git", "-C", str(path), "pull", "--ff-only"], capture_output=True, text=True)
-    out = subprocess.run(
-        ["git", "-C", str(path), "checkout", "-b", branch_name],
+
+    # Если ветка уже существует локально (например, задачу прервали и
+    # перезапустили) - переключаемся на неё, а не пытаемся создать заново.
+    exists = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "--verify", "--quiet", branch_name],
         capture_output=True, text=True,
-    )
+    ).returncode == 0
+
+    if exists:
+        out = subprocess.run(
+            ["git", "-C", str(path), "checkout", branch_name],
+            capture_output=True, text=True,
+        )
+    else:
+        out = subprocess.run(
+            ["git", "-C", str(path), "checkout", "-b", branch_name],
+            capture_output=True, text=True,
+        )
     return out.stdout.strip() or out.stderr.strip() or f"Ветка {branch_name} создана и активна"
 
 
