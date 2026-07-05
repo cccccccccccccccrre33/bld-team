@@ -14,6 +14,7 @@ import random
 from agent_framework import Message
 
 from agents.executive_board import build_executive_board
+from agents.global_geniuses import GLOBAL_LABELS
 from agents.roster import build_full_roster
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from config.client_factory import get_chat_client
@@ -28,6 +29,7 @@ ROLE_LABELS = {
     "cto": "🧑‍💼 CTO", "backend_senior": "⌨️  Backend",
     "product_frontend": "🎨 Product/Frontend", "qa_security": "🔒 QA/Security",
     "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR",
+    **GLOBAL_LABELS,
 }
 
 
