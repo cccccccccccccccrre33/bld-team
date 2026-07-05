@@ -38,7 +38,7 @@ import os
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": os.getenv("MODEL_CTO", "gpt-5.4"),
+    "cto": os.getenv("MODEL_CTO", "Mistral-Large-3"),
 
     # Дотошный сильный синьор-бэкендер
     "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.4-mini"),
@@ -101,8 +101,8 @@ BOARD_MODEL_ASSIGNMENTS = {
 EXEC_MODEL_ASSIGNMENTS = {
     "coo": os.getenv("MODEL_EXEC_COO", "gpt-5.4-mini"),
     "hr": os.getenv("MODEL_EXEC_HR", "gpt-5.4-mini"),
-    "secretary": os.getenv("MODEL_EXEC_SECRETARY", "gpt-5.4-nano"),
-    "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "gpt-5.4-nano"),
+    "secretary": os.getenv("MODEL_EXEC_SECRETARY", "DeepSeek-V4-Flash"),
+    "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "DeepSeek-V4-Flash"),
     "worker": os.getenv("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
 }
 
@@ -115,10 +115,40 @@ EXEC_MODEL_ASSIGNMENTS = {
 GLOBAL_MODEL_ASSIGNMENTS = {
     "mit": os.getenv("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
     "caltech": os.getenv("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
-    "stanford": os.getenv("MODEL_GENIUS_STANFORD", "gpt-5.4-mini"),  # прикладной AI/стата, продуктовое чутьё
-    "cmu": os.getenv("MODEL_GENIUS_CMU", "gpt-5.4-mini"),     # чистый CS, формальные методы, робастность
+    "stanford": os.getenv("MODEL_GENIUS_STANFORD", "Llama-4-Maverick-17B-128E-Instruct-FP8"),  # прикладной AI/стата, продуктовое чутьё
+    "cmu": os.getenv("MODEL_GENIUS_CMU", "Kimi-K2.7-Code"),     # чистый CS, формальные методы, робастность — реально пишет код
     "tsinghua": os.getenv("MODEL_GENIUS_TSINGHUA", "gpt-5.4-mini"),  # элитный CS, распределённые системы
     "pku": os.getenv("MODEL_GENIUS_PKU", "gpt-5.4-nano"),     # чистая математика, криптография
     "ustc": os.getenv("MODEL_GENIUS_USTC", "gpt-5.4-nano"),   # скорость, производительность, AI-вычисления
     "eth": os.getenv("MODEL_GENIUS_ETH", "gpt-5.4-mini"),     # надёжность, формальная верификация
+    "kaist": os.getenv("MODEL_GENIUS_KAIST", "gpt-5.4-nano"), # HCI, AI-агенты, UX-мышление
 }
+
+# --- Лидерство (agents/leadership.py) ---
+# Chief Scientist — 5-й член совета директоров ("ту ли задачу решаем").
+# VP Engineering — 3-й член правления (приоритизация инженерных задач).
+CHIEF_SCIENTIST_MODEL = os.getenv("MODEL_CHIEF_SCIENTIST", "gpt-5.4")
+VP_ENGINEERING_MODEL = os.getenv("MODEL_VP_ENGINEERING", "gpt-5.4-mini")
+
+# --- Review Gate (agents/review_gate.py) ---
+# Проверяют результат инженерной задачи ПЕРЕД тем как отчёт уйдёт
+# Валику — архитектурное вето, качество кода, попытка сломать решение.
+REVIEW_GATE_MODEL_ASSIGNMENTS = {
+    "chief_architect": os.getenv("MODEL_CHIEF_ARCHITECT", "gpt-5.4"),
+    "reviewer": os.getenv("MODEL_REVIEWER", "DeepSeek-V4-Pro"),  # силён в логике/сложности — Big O
+    "failure_engineer": os.getenv("MODEL_FAILURE_ENGINEER", "grok-4.3"),  # дерзкий стиль — специально всё ломает
+}
+
+# --- Инженерный спецназ (agents/specialists.py) ---
+# Дополняют пул глобальных гениев в инженерной команде — узкие,
+# практические специализации, которых не было.
+SPECIALIST_MODEL_ASSIGNMENTS = {
+    "database_engineer": os.getenv("MODEL_DATABASE_ENGINEER", "gpt-5.4-mini"),
+    "performance_engineer": os.getenv("MODEL_PERFORMANCE_ENGINEER", "gpt-5.4-mini"),
+    "security_engineer": os.getenv("MODEL_SECURITY_ENGINEER", "gpt-5.4-mini"),
+    "reliability_engineer": os.getenv("MODEL_RELIABILITY_ENGINEER", "gpt-5.4-mini"),
+}
+
+# --- Knowledge Curator (agents/knowledge_curator.py) ---
+# Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
+KNOWLEDGE_CURATOR_MODEL = os.getenv("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
