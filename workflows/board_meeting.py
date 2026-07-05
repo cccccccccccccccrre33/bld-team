@@ -21,7 +21,16 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, extract_messages, extract_next_step, load_recent_topics, save_topic, sync_repos_or_alert
+from workflows._common import (
+    ask,
+    curate_knowledge,
+    extract_messages,
+    extract_next_step,
+    load_recent_topics,
+    looks_like_meta_complaint,
+    save_topic,
+    sync_repos_or_alert,
+)
 from workflows.engineering_task import run_engineering_task
 
 MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
@@ -31,6 +40,7 @@ ROLE_LABELS = {
     "fiztech":  "⚙️  Физтех",
     "fizmat":   "🎲 Физмат",
     "tehmat":   "♟️  Техмат",
+    "chief_scientist": "🔭 Chief Scientist",
     "secretary": "📋 Секретарь",
 }
 
@@ -206,6 +216,19 @@ async def main():
 
     result = await workflow.run(agenda)
     transcript = extract_messages(result.get_outputs())
+    assistant_messages = [m for m in transcript if m.role == "assistant"]
+
+    if not assistant_messages:
+        alert = (
+            "⚠️ ЗАСЕДАНИЕ НЕ ДАЛО РЕПЛИК — сессия отменена\n\n"
+            f"Тема: {agenda}\n\n"
+            "GroupChat вернул пустую стенограмму (0 сообщений участников). "
+            "Дальше по пайплайну идти нет смысла — отчёт и инженерная задача "
+            "не запускаются. Следующее заседание пройдёт по расписанию как обычно."
+        )
+        print(alert)
+        send_telegram_report(alert)
+        return
 
     for msg in transcript:
         if msg.role == "assistant":
@@ -230,10 +253,24 @@ async def main():
     task = await extract_next_step(report, secretary_client)
     print(f"Задача: {task}")
 
+    if looks_like_meta_complaint(task):
+        alert = (
+            "⚠️ ЗАДАЧА ДЛЯ ИНЖЕНЕРНОЙ КОМАНДЫ ВЫГЛЯДИТ НЕОСМЫСЛЕННОЙ — пропущена\n\n"
+            f"Извлечённый 'следующий шаг': {task}\n\n"
+            "Похоже на жалобу модели на нехватку данных, а не на реальную "
+            "задачу (например, отчёт заседания получился пустым/битым). "
+            "Инженерная команда НЕ запущена — реализовывать тут нечего."
+        )
+        print(alert)
+        send_telegram_report(alert)
+        return
+
     print("Инженерная команда берётся за реализацию...")
     engineering_report = await run_engineering_task(task)
     print(f"\n{engineering_report}")
     send_telegram_report(engineering_report)
+
+    await curate_knowledge("Совет директоров", report + "\n\n" + engineering_report)
 
 
 if __name__ == "__main__":
