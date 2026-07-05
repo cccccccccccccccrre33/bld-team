@@ -105,3 +105,20 @@ EXEC_MODEL_ASSIGNMENTS = {
     "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "gpt-5.4-nano"),
     "worker": os.getenv("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
 }
+
+# --- Глобальные гении (agents/global_geniuses.py) ---
+# Архетипы по мировым топ-вузам — используются И в общем ростере
+# (Лаборатория, HR 1-на-1), И как пул специалистов, которых лид-инженер
+# может "нанять" под конкретную задачу (agents/engineering.py).
+# gpt-5.5 сознательно не раздаём сюда — он остаётся эксклюзивным для
+# Мехмата (совет) и Лид-инженера, чтобы не взорвать косты.
+GLOBAL_MODEL_ASSIGNMENTS = {
+    "mit": os.getenv("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
+    "caltech": os.getenv("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
+    "stanford": os.getenv("MODEL_GENIUS_STANFORD", "gpt-5.4-mini"),  # прикладной AI/стата, продуктовое чутьё
+    "cmu": os.getenv("MODEL_GENIUS_CMU", "gpt-5.4-mini"),     # чистый CS, формальные методы, робастность
+    "tsinghua": os.getenv("MODEL_GENIUS_TSINGHUA", "gpt-5.4-mini"),  # элитный CS, распределённые системы
+    "pku": os.getenv("MODEL_GENIUS_PKU", "gpt-5.4-nano"),     # чистая математика, криптография
+    "ustc": os.getenv("MODEL_GENIUS_USTC", "gpt-5.4-nano"),   # скорость, производительность, AI-вычисления
+    "eth": os.getenv("MODEL_GENIUS_ETH", "gpt-5.4-mini"),     # надёжность, формальная верификация
+}
