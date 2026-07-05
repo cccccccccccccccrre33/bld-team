@@ -15,11 +15,19 @@ import sys
 from datetime import datetime
 
 from agents.engineering import build_lead_engineer, build_specialist_pool
-from agents.global_geniuses import GLOBAL_LABELS, SPECIALTY_KEYWORDS
-from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS
+from agents.global_geniuses import GLOBAL_LABELS
+from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
+from agents.review_gate import run_review_gate
+from agents.specialists import SPECIALIST_LABELS
+from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
+from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
 from tools.repo_tools import commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
-from workflows._common import sync_repos_or_alert
+from workflows._common import curate_knowledge, sync_repos_or_alert
+
+ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS}
+ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS}
+ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS}
 
 # Ключевые слова, по которым понимаем, что лид явно попросил помощи —
 # простая эвристика, не идеальная, но рабочая без сложного парсинга
@@ -50,7 +58,7 @@ def find_matching_specialists(text: str, max_specialists: int = 2) -> list[str]:
     описанную лидом оставшуюся работу — максимум max_specialists штук,
     чтобы не разводить бесконечный найм."""
     lowered = text.lower()
-    matches = [name for name, kws in SPECIALTY_KEYWORDS.items() if any(kw in lowered for kw in kws)]
+    matches = [name for name, kws in ALL_SPECIALTY_KEYWORDS.items() if any(kw in lowered for kw in kws)]
     return matches[:max_specialists]
 
 
@@ -75,21 +83,29 @@ async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
     lead_response = await lead.run(prompt)
     lead_summary = lead_response.text.strip()
 
+    if "ЗАДАЧА НЕ ОСМЫСЛЕН" in lead_summary.upper():
+        return (
+            f"⚠️ ИНЖЕНЕРНАЯ ЗАДАЧА ОТКЛОНЕНА ЛИДОМ\n\n"
+            f"ЗАДАЧА: {task}\n\n"
+            f"{lead_summary}\n\n"
+            "Код не писался, ветка не тронута, review gate не запускался."
+        )
+
     findings = [f"👷‍♂️ Ведущий инженер ({lead_model}):\n{lead_summary}"]
 
     if any(kw in lead_summary.lower() for kw in HELP_KEYWORDS):
         matched_names = find_matching_specialists(lead_summary, max_specialists=2)
         if not matched_names:
             import random
-            matched_names = [random.choice(list(SPECIALTY_KEYWORDS.keys()))]
+            matched_names = [random.choice(list(ALL_SPECIALTY_KEYWORDS.keys()))]
 
         print(f"Ведущий инженер запросил помощь — нанимаем: {', '.join(matched_names)}...")
         pool = build_specialist_pool()
 
         for name in matched_names:
             specialist = pool[name]
-            label = GLOBAL_LABELS.get(name, name)
-            model_name = GLOBAL_MODEL_ASSIGNMENTS.get(name, "?")
+            label = ALL_SPECIALIST_LABELS.get(name, name)
+            model_name = ALL_SPECIALIST_MODELS.get(name, "?")
             specialist_prompt = f"""
 Ведущий инженер оставил такое описание задачи и своей части работы:
 
@@ -109,15 +125,25 @@ write_file.
     push_result = commit_and_push(repo_name, branch_name, f"AI engineering: {task[:60]}")
     print(push_result)
 
+    engineering_summary = "\n\n".join(findings)
+
+    print("Review Gate: Chief Architect, Reviewer и Failure Engineer проверяют изменение...")
+    review_verdict = await run_review_gate(task, repo_name, branch_name, engineering_summary)
+    print(review_verdict)
+
     report = (
         f"👷‍♂️ ИНЖЕНЕРНАЯ ЗАДАЧА ВЫПОЛНЕНА\n\n"
         f"ЗАДАЧА:\n{task}\n\n"
         f"РЕПОЗИТОРИЙ: {repo_name}\n"
         f"ВЕТКА: {branch_name}\n\n"
-        + "\n\n".join(findings)
+        + engineering_summary
         + f"\n\n{push_result}\n\n"
-        "⚠️ Изменения НЕ в main — открой ветку, проверь и смержи сам, "
-        "если всё устраивает."
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "REVIEW GATE\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        + review_verdict
+        + "\n\n⚠️ Изменения НЕ в main — открой ветку, проверь и смержи сам, "
+        "с учётом вердикта ревью выше."
     )
     return report
 
@@ -135,6 +161,8 @@ async def main():
     report = await run_engineering_task(task)
     print(f"\n{report}")
     send_telegram_report(report)
+
+    await curate_knowledge("Инженерная задача", report)
 
 
 if __name__ == "__main__":
