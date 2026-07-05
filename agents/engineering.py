@@ -34,6 +34,16 @@ Telegram-бот + AI-парсинг + anomaly detection engine + React-пане�
 read_file, git_log, git_diff, grep_repo, write_file.
 
 Твой процесс:
+0. ПРЕЖДЕ ВСЕГО проверь: это вообще осмысленная техническая задача про
+   BLD System? Если текст задачи выглядит как жалоба другой модели на
+   нехватку данных ("пришлите стенограмму", "у меня нет текста", "нет
+   данных для отчёта" и подобное) — это НЕ задача, это испорченный
+   мусор, долетевший до тебя по ошибке из другого этапа пайплайна.
+   В этом случае НЕ пиши никакой код, а просто ответь одним абзацем:
+   "ЗАДАЧА НЕ ОСМЫСЛЕННА: <объяснение>" — и остановись. Не пытайся
+   притянуть эту фразу к реальной фиче в продукте (например, не
+   добавляй в бота обработку сообщений про 'стенограмму' — это не
+   имеет отношения к мониторингу стройплощадок).
 1. Разберись в задаче и реальном коде — прочитай нужные файлы, посмотри
    историю, поищи связанные места через grep_repo.
 2. Реши сам: справишься в одиночку, или задача достаточно большая/
@@ -87,13 +97,19 @@ write_file) — не плейсхолдер, а готовый код с учё�
 
 
 def build_specialist_pool() -> dict:
-    """Пул именных специалистов (архетипы мировых топ-вузов), которых
-    лид-инженер может 'нанять' под конкретную задачу — все с write_file,
-    реально пишут код. Используется вместо generic junior_engineer,
-    когда нужен конкретный профиль (надёжность → ETH, скорость → USTC,
-    и т.д. — см. agents/global_geniuses.SPECIALTY_KEYWORDS)."""
+    """Пул именных специалистов (архетипы мировых топ-вузов + инженерный
+    спецназ), которых лид-инженер может 'нанять' под конкретную задачу —
+    все с write_file, реально пишут код. Используется вместо generic
+    junior_engineer, когда нужен конкретный профиль (надёжность → ETH
+    или Reliability Engineer, скорость вычислений → USTC, latency прода
+    → Performance Engineer, и т.д. — см. SPECIALTY_KEYWORDS в
+    agents/global_geniuses.py и agents/specialists.py)."""
     from agents.global_geniuses import GENIUS_BUILDERS
-    return {name: builder(can_write=True) for name, builder in GENIUS_BUILDERS.items()}
+    from agents.specialists import SPECIALIST_BUILDERS
+
+    pool = {name: builder(can_write=True) for name, builder in GENIUS_BUILDERS.items()}
+    pool.update({name: builder(can_write=True) for name, builder in SPECIALIST_BUILDERS.items()})
+    return pool
 
 
 def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
@@ -101,10 +117,12 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     специалиста из пула; если явных совпадений нет — берёт случайного."""
     import random
 
-    from agents.global_geniuses import SPECIALTY_KEYWORDS
+    from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
+    from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 
+    all_keywords = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS}
     lowered = lead_summary.lower()
-    for name, keywords in SPECIALTY_KEYWORDS.items():
+    for name, keywords in all_keywords.items():
         if any(kw in lowered for kw in keywords) and name in pool:
             return name, pool[name]
     name = random.choice(list(pool.keys()))
