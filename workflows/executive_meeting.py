@@ -21,13 +21,14 @@ from agents.executive_board import build_executive_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, dispatch_worker, extract_messages, extract_next_step
+from workflows._common import ask, curate_knowledge, dispatch_worker, extract_messages, extract_next_step, looks_like_meta_complaint
 
 MAX_MESSAGES = 20
 
 ROLE_LABELS = {
     "coo": "🗂️  COO",
     "hr": "🧑‍🤝‍🧑 HR",
+    "vp_engineering": "📐 VP Engineering",
     "secretary": "📋 Секретарь",
 }
 
@@ -156,6 +157,18 @@ async def main():
 
     result = await workflow.run(agenda)
     transcript = extract_messages(result.get_outputs())
+    assistant_messages = [m for m in transcript if m.role == "assistant"]
+
+    if not assistant_messages:
+        alert = (
+            "⚠️ ЗАСЕДАНИЕ ПРАВЛЕНИЯ НЕ ДАЛО РЕПЛИК — сессия отменена\n\n"
+            f"Тема: {agenda}\n\n"
+            "GroupChat вернул пустую стенограмму. Дальше по пайплайну идти "
+            "нет смысла — отчёт и задача сотруднику не запускаются."
+        )
+        print(alert)
+        send_telegram_report(alert)
+        return
 
     for msg in transcript:
         if msg.role == "assistant":
@@ -173,12 +186,25 @@ async def main():
     task = await extract_next_step(report, secretary_client)
     print(f"Задача: {task}")
 
+    if looks_like_meta_complaint(task):
+        alert = (
+            "⚠️ ЗАДАЧА ДЛЯ СОТРУДНИКА ВЫГЛЯДИТ НЕОСМЫСЛЕННОЙ — пропущена\n\n"
+            f"Извлечённый 'следующий шаг': {task}\n\n"
+            "Похоже на жалобу модели на нехватку данных, а не на реальную "
+            "задачу. Сотрудник НЕ запущен."
+        )
+        print(alert)
+        send_telegram_report(alert)
+        return
+
     print("Сотрудник разбирается...")
     findings = await dispatch_worker(task, EXEC_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
 
     worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ:\n{task}\n\n{findings}"
     print(f"\n{worker_message}")
     send_telegram_report(worker_message)
+
+    await curate_knowledge("Правление", report + "\n\n" + worker_message)
 
 
 if __name__ == "__main__":
