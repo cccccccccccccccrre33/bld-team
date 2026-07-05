@@ -84,3 +84,28 @@ write_file) — не плейсхолдер, а готовый код с учё�
 """,
         tools=ENGINEERING_TOOLS,
     )
+
+
+def build_specialist_pool() -> dict:
+    """Пул именных специалистов (архетипы мировых топ-вузов), которых
+    лид-инженер может 'нанять' под конкретную задачу — все с write_file,
+    реально пишут код. Используется вместо generic junior_engineer,
+    когда нужен конкретный профиль (надёжность → ETH, скорость → USTC,
+    и т.д. — см. agents/global_geniuses.SPECIALTY_KEYWORDS)."""
+    from agents.global_geniuses import GENIUS_BUILDERS
+    return {name: builder(can_write=True) for name, builder in GENIUS_BUILDERS.items()}
+
+
+def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
+    """По ключевым словам в тексте лида определяет наиболее подходящего
+    специалиста из пула; если явных совпадений нет — берёт случайного."""
+    import random
+
+    from agents.global_geniuses import SPECIALTY_KEYWORDS
+
+    lowered = lead_summary.lower()
+    for name, keywords in SPECIALTY_KEYWORDS.items():
+        if any(kw in lowered for kw in keywords) and name in pool:
+            return name, pool[name]
+    name = random.choice(list(pool.keys()))
+    return name, pool[name]
