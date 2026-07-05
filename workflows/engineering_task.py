@@ -16,8 +16,9 @@ from datetime import datetime
 
 from agents.engineering import build_junior_engineer, build_lead_engineer
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import clone_or_update_repos, commit_and_push, create_branch
+from tools.repo_tools import commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
+from workflows._common import sync_repos_or_alert
 
 # Ключевые слова, по которым понимаем, что лид явно попросил помощи —
 # простая эвристика, не идеальная, но рабочая без сложного парсинга
@@ -108,7 +109,8 @@ async def main():
         return
 
     print("Синхронизация репозиториев...")
-    print(clone_or_update_repos())
+    if not await sync_repos_or_alert():
+        return
 
     report = await run_engineering_task(task)
     print(f"\n{report}")
