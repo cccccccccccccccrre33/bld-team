@@ -111,7 +111,7 @@ SQUADS = {
     "alpha": {
         "label": "🅰️  Отряд Альфа (Ядро и данные)",
         "lead_builder": build_squad_lead_alpha,
-        "member_names": ["database_engineer", "performance_engineer", "mit"],
+        "member_names": ["database_engineer", "performance_engineer", "mit", "mlops_engineer"],
         "domain_keywords": [
             "база данных", "базе данных", "базы данных", "базой данных", "базу данных", "postgres", "sql", "индекс",
             "производительность", "latency", "оптимизац", "anomaly",
@@ -121,7 +121,7 @@ SQUADS = {
     "bravo": {
         "label": "🅱️  Отряд Браво (Надёжность и безопасность)",
         "lead_builder": build_squad_lead_bravo,
-        "member_names": ["security_engineer", "reliability_engineer", "eth"],
+        "member_names": ["security_engineer", "reliability_engineer", "eth", "devops_engineer"],
         "domain_keywords": [
             "надёжност", "безопасност", "уязвимост", "мониторинг",
             "сбой", "отказоустойчив", "верифик", "права доступа",
