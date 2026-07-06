@@ -31,7 +31,19 @@ from workflows._common import (
     save_topic,
     sync_repos_or_alert,
 )
-from workflows.engineering_task import run_engineering_task
+from workflows.squad_task import dispatch_squads
+from agents.squads import SQUADS
+
+
+def assign_task_to_squad(task: str) -> str:
+    """По ключевым словам решает, какому отряду ближе задача. Если
+    непонятно — по умолчанию Альфа (ядро/данные), т.к. большинство
+    задач у BLD пока про сам движок/данные, а не про надёжность/security."""
+    lowered = task.lower()
+    for key in ("bravo", "alpha"):
+        if any(kw in lowered for kw in SQUADS[key]["domain_keywords"]):
+            return key
+    return "alpha"
 
 MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
 
@@ -270,12 +282,18 @@ async def main():
         send_telegram_report(alert)
         return
 
-    print("Инженерная команда берётся за реализацию...")
-    engineering_report = await run_engineering_task(task)
-    print(f"\n{engineering_report}")
-    send_telegram_report(engineering_report)
+    target_squad = assign_task_to_squad(task)
+    other_squad = "bravo" if target_squad == "alpha" else "alpha"
+    tasks_by_squad = {target_squad: task, other_squad: None}  # второй отряд сам найдёт себе задачу
 
-    await curate_knowledge("Совет директоров", report + "\n\n" + engineering_report)
+    print(f"Задача уходит в {SQUADS[target_squad]['label']}; "
+          f"{SQUADS[other_squad]['label']} параллельно ищет свою проблему...")
+    squad_reports = await dispatch_squads(tasks_by_squad)
+
+    for squad_report in squad_reports:
+        print(f"\n{squad_report}")
+        send_telegram_report(squad_report)
+        await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + squad_report)
 
 
 if __name__ == "__main__":
