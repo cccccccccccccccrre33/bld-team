@@ -152,3 +152,11 @@ SPECIALIST_MODEL_ASSIGNMENTS = {
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
 # Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
 KNOWLEDGE_CURATOR_MODEL = os.getenv("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
+
+# --- Инженерные отряды (agents/squads.py, workflows/squad_task.py) ---
+# Постоянные команды (не ad-hoc подбор) — работают параллельно над
+# РАЗНЫМИ задачами. Лиды на проверенных gpt-моделях (эти роли реально
+# пишут код через write_file — надёжность tool-calling тут важнее
+# экспериментов с новыми провайдерами).
+SQUAD_LEAD_ALPHA_MODEL = os.getenv("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
+SQUAD_LEAD_BRAVO_MODEL = os.getenv("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
