@@ -113,7 +113,7 @@ SQUADS = {
         "lead_builder": build_squad_lead_alpha,
         "member_names": ["database_engineer", "performance_engineer", "mit"],
         "domain_keywords": [
-            "база данных", "базе данных", "postgres", "sql", "индекс",
+            "база данных", "базе данных", "базы данных", "базой данных", "базу данных", "postgres", "sql", "индекс",
             "производительность", "latency", "оптимизац", "anomaly",
             "аномал", "архитектур", "backend",
         ],
