@@ -62,6 +62,21 @@ def find_matching_specialists(text: str, max_specialists: int = 2) -> list[str]:
     return matches[:max_specialists]
 
 
+# Иерархия принятия решений: у Review Gate РЕАЛЬНОЕ право вето, не
+# просто совещательный голос. Если хотя бы один из трёх ревьюеров
+# выносит серьёзный негативный вердикт — лид-инженер ОБЯЗАН
+# переделать, прежде чем отчёт уйдёт Валику. Ограничено ОДНИМ циклом
+# переделки, чтобы не уйти в бесконечный цикл и не разорить бюджет —
+# если после переделки всё ещё есть проблемы, это уже честно
+# показывается Валику как есть, а не скрывается.
+NEGATIVE_VERDICT_MARKERS = ["ТРЕБУЕТ ПЕРЕДЕЛКИ", "REJECT", "ЛОМАЕТСЯ ЛЕГКО"]
+
+
+def needs_rework(verdict_text: str) -> bool:
+    upper = verdict_text.upper()
+    return any(marker in upper for marker in NEGATIVE_VERDICT_MARKERS)
+
+
 async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
     repo_name = repo_name or guess_repo(task)
     branch_name = f"ai-eng/{slugify(task)}-{datetime.now().strftime('%Y%m%d-%H%M')}"
@@ -131,6 +146,44 @@ write_file.
     review_verdict = await run_review_gate(task, repo_name, branch_name, engineering_summary)
     print(review_verdict)
 
+    rework_note = ""
+    if needs_rework(review_verdict):
+        print("Review Gate потребовал переделки — это ВЕТО, лид обязан исправить...")
+        rework_prompt = f"""
+Review Gate (Chief Architect / Reviewer / Failure Engineer — все
+сеньоры с реальным опытом) проверил твою работу и вернул серьёзные
+замечания. Это не совет, а обязательное требование — переделай:
+
+{review_verdict}
+
+Исходная задача: {task}
+Репозиторий: {repo_name}, ветка {branch_name} (текущая, изменения уже
+внесены тобой ранее).
+
+Через write_file внеси точечные правки, устраняющие именно эти
+замечания — не переписывай всё с нуля без необходимости. В конце
+кратко опиши, что именно исправил по каждому замечанию.
+"""
+        rework_response = await lead.run(rework_prompt)
+        findings.append(f"🔄 Ведущий инженер (доработка по вето Review Gate):\n{rework_response.text.strip()}")
+        engineering_summary = "\n\n".join(findings)
+
+        push_result_2 = commit_and_push(repo_name, branch_name, "AI engineering: доработка по замечаниям Review Gate")
+        print(push_result_2)
+        push_result = push_result + "\n\n(после доработки)\n" + push_result_2
+
+        print("Повторная проверка Review Gate после доработки...")
+        review_verdict_2 = await run_review_gate(task, repo_name, branch_name, engineering_summary)
+        print(review_verdict_2)
+
+        rework_note = (
+            "🔄 ПОТРЕБОВАЛАСЬ ОДНА ПЕРЕДЕЛКА — Review Gate изначально не пропустил "
+            "первую версию (вердикт ниже — ДО переделки), лид исправил, вот "
+            "вердикт ПОСЛЕ.\n\n"
+            f"ВЕРДИКТ ДО ПЕРЕДЕЛКИ:\n{review_verdict}\n\n"
+        )
+        review_verdict = review_verdict_2
+
     report = (
         f"👷‍♂️ ИНЖЕНЕРНАЯ ЗАДАЧА ВЫПОЛНЕНА\n\n"
         f"ЗАДАЧА:\n{task}\n\n"
@@ -141,6 +194,7 @@ write_file.
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "REVIEW GATE\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        + rework_note
         + review_verdict
         + "\n\n⚠️ Изменения НЕ в main — открой ветку, проверь и смержи сам, "
         "с учётом вердикта ревью выше."
