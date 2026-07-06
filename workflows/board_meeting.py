@@ -27,11 +27,13 @@ from workflows._common import (
     extract_messages,
     extract_next_step,
     load_recent_topics,
+    load_rotation_turn,
     looks_like_meta_complaint,
+    save_rotation_turn,
     save_topic,
     sync_repos_or_alert,
 )
-from workflows.squad_task import dispatch_squads
+from workflows.squad_task import dispatch_squads, run_squad_relay, task_spans_both_domains
 from agents.squads import SQUADS
 
 
@@ -282,18 +284,36 @@ async def main():
         send_telegram_report(alert)
         return
 
-    target_squad = assign_task_to_squad(task)
-    other_squad = "bravo" if target_squad == "alpha" else "alpha"
-    tasks_by_squad = {target_squad: task, other_squad: None}  # второй отряд сам найдёт себе задачу
+    if task_spans_both_domains(task):
+        print("Задача затрагивает обе зоны — отряды работают эстафетой на одной ветке...")
+        relay_report = await run_squad_relay(task)
+        print(f"\n{relay_report}")
+        send_telegram_report(relay_report)
+        await curate_knowledge("Совет директоров / Эстафета отрядов", report + "\n\n" + relay_report)
+    else:
+        target_squad = assign_task_to_squad(task)
+        other_squad = "bravo" if target_squad == "alpha" else "alpha"
 
-    print(f"Задача уходит в {SQUADS[target_squad]['label']}; "
-          f"{SQUADS[other_squad]['label']} параллельно ищет свою проблему...")
-    squad_reports = await dispatch_squads(tasks_by_squad)
+        # Ротация: чтобы простаивающий отряд не искал себе левую задачу
+        # каждый раз (это и создавало риск постоянного шума от
+        # несвязанных параллельных веток) — только через раз.
+        turn = load_rotation_turn("squad_idle_rotation")
+        if turn == 0:
+            print(f"Задача уходит в {SQUADS[target_squad]['label']}; "
+                  f"по ротации {SQUADS[other_squad]['label']} тоже ищет себе задачу...")
+            tasks_by_squad = {target_squad: task, other_squad: None}
+        else:
+            print(f"Задача уходит только в {SQUADS[target_squad]['label']}; "
+                  f"{SQUADS[other_squad]['label']} отдыхает этот цикл (ротация)...")
+            tasks_by_squad = {target_squad: task}
+        save_rotation_turn("squad_idle_rotation", 1 - turn)
 
-    for squad_report in squad_reports:
-        print(f"\n{squad_report}")
-        send_telegram_report(squad_report)
-        await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + squad_report)
+        squad_reports = await dispatch_squads(tasks_by_squad)
+
+        for squad_report in squad_reports:
+            print(f"\n{squad_report}")
+            send_telegram_report(squad_report)
+            await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + squad_report)
 
 
 if __name__ == "__main__":
