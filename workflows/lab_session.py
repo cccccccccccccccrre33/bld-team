@@ -23,6 +23,7 @@ import sys
 from agent_framework import Message
 
 from agents.global_geniuses import GLOBAL_LABELS
+from agents.growth_team import GROWTH_LABELS
 from agents.specialists import SPECIALIST_LABELS
 from agents.roster import CODE_ACCESS_ROLES, build_full_roster
 from config.client_factory import get_chat_client
@@ -41,6 +42,7 @@ ROLE_LABELS = {
     "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR", "vp_engineering": "📐 VP Engineering", "squad_lead_alpha": "🅰️  Squad Lead Alpha", "squad_lead_bravo": "🅱️  Squad Lead Bravo",
     **GLOBAL_LABELS,
     **SPECIALIST_LABELS,
+    **GROWTH_LABELS,
 }
 
 OPENING_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
