@@ -85,3 +85,77 @@ async def dispatch_squads(tasks_by_squad: dict[str, str | None]) -> list[str]:
     """
     coros = [run_squad_task(squad_key, task) for squad_key, task in tasks_by_squad.items()]
     return await asyncio.gather(*coros)
+
+
+def task_spans_both_domains(task: str) -> bool:
+    """True, если задача реально задевает зоны ОБОИХ отрядов (например
+    'надёжность БД под нагрузкой') — в этом случае их лучше не пускать
+    параллельно на разные ветки (риск рассинхрона), а провести эстафету
+    на одной ветке."""
+    lowered = task.lower()
+    alpha_hit = any(kw in lowered for kw in SQUADS["alpha"]["domain_keywords"])
+    bravo_hit = any(kw in lowered for kw in SQUADS["bravo"]["domain_keywords"])
+    return alpha_hit and bravo_hit
+
+
+async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> str:
+    """Оба отряда работают НАД ОДНОЙ задачей ПОСЛЕДОВАТЕЛЬНО на одной
+    ветке — каждый берёт свою часть, второй продолжает поверх первого.
+    Никакого риска рассинхрона: одна ветка, чёткая передача эстафеты,
+    единый Review Gate в конце.
+    """
+    from datetime import datetime
+
+    from agents.review_gate import run_review_gate
+    from tools.repo_tools import commit_and_push, create_branch
+    from workflows.engineering_task import guess_repo, slugify
+
+    repo_name = guess_repo(task)
+    branch_name = f"ai-eng-relay/{slugify(task)}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+
+    print(f"[relay] Создаём общую ветку {branch_name} в {repo_name}...")
+    print(create_branch(repo_name, branch_name))
+
+    findings = []
+    for squad_key in order:
+        squad = SQUADS[squad_key]
+        lead = squad["lead_builder"]()
+        prev_summary = "\n\n".join(findings) if findings else "(это первая часть работы — ты начинаешь)"
+
+        prompt = f"""
+Общая задача (вы работаете последовательно с другим отрядом на одной
+ветке): {task}
+
+Репозиторий: {repo_name}, ветка {branch_name} (текущая).
+
+Что уже сделано другим отрядом до тебя:
+{prev_summary}
+
+Реализуй ИМЕННО свою часть — ту, что в зоне ответственности твоего
+отряда — через write_file, опираясь на уже сделанное. Не переделывай
+чужую часть, дополняй её. В конце — короткое резюме, что сделал.
+"""
+        print(f"[relay] {squad['label']} берётся за свою часть...")
+        response = await lead.run(prompt)
+        findings.append(f"{squad['label']}:\n{response.text.strip()}")
+
+    engineering_summary = "\n\n".join(findings)
+
+    print("[relay] Коммитим объединённое изменение...")
+    push_result = commit_and_push(repo_name, branch_name, f"AI engineering (relay): {task[:60]}")
+    print(push_result)
+
+    print("[relay] Review Gate проверяет результат обеих команд разом...")
+    review_verdict = await run_review_gate(task, repo_name, branch_name, engineering_summary)
+    print(review_verdict)
+
+    return (
+        f"🔗 СОВМЕСТНАЯ ЗАДАЧА — ЭСТАФЕТА ({SQUADS['alpha']['label']} → {SQUADS['bravo']['label']})\n\n"
+        f"ЗАДАЧА:\n{task}\n\n"
+        f"РЕПОЗИТОРИЙ: {repo_name}\nВЕТКА: {branch_name}\n\n"
+        + engineering_summary
+        + f"\n\n{push_result}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nREVIEW GATE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        + review_verdict
+        + "\n\n⚠️ Изменения НЕ в main — открой ветку, проверь и смержи сам."
+    )
