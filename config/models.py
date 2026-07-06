@@ -32,78 +32,92 @@ Responses API, который сторонние модели (не-OpenAI) в �
 
 import os
 
+
+def _env(key: str, default: str) -> str:
+    """Как os.getenv, но пустая строка тоже считается 'не задано'.
+
+    GitHub Actions передаёт ${{ vars.X }} как ПУСТУЮ строку, если такой
+    Variable не существует в репозитории — переменная окружения при
+    этом всё равно СОЗДАЁТСЯ (просто пустой), поэтому _env(key,
+    default) не срабатывает — он берёт default только когда переменной
+    нет вообще, а не когда она пустая. Из-за этого дефолты в этом файле
+    тихо перезаписывались пустыми строками везде, где в .yml есть
+    vars.MODEL_XXX, а сама Variable не создана."""
+    value = os.getenv(key, "")
+    return value if value else default
+
 # Azure AI Foundry endpoint и креды берутся из переменных окружения,
 # см. .env.example. Используем DefaultAzureCredential под капотом
 # (см. client_factory.py) — никаких ключей в коде.
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": os.getenv("MODEL_CTO", "Mistral-Large-3"),
+    "cto": _env("MODEL_CTO", "Mistral-Large-3"),
 
     # Дотошный сильный синьор-бэкендер
-    "backend_senior": os.getenv("MODEL_BACKEND", "gpt-5.4-mini"),
+    "backend_senior": _env("MODEL_BACKEND", "gpt-5.4-mini"),
 
     # Продукт / фронт / UX — не нужна максимальная глубина
-    "product_frontend": os.getenv("MODEL_PRODUCT", "gpt-5.4-nano"),
+    "product_frontend": _env("MODEL_PRODUCT", "gpt-5.4-nano"),
 
     # QA / Security — параноик, ищет edge-cases
-    "qa_security": os.getenv("MODEL_QA", "gpt-5.4-mini"),
+    "qa_security": _env("MODEL_QA", "gpt-5.4-mini"),
 
     # Не участник дискуссии — "руки", читающие репозиторий.
-    "code_scout": os.getenv("MODEL_CODE_SCOUT", "gpt-5.2"),
+    "code_scout": _env("MODEL_CODE_SCOUT", "gpt-5.2"),
 
     # Модератор GroupChat — чисто роутинг, дешёвая модель.
-    "moderator": os.getenv("MODEL_MODERATOR", "gpt-5.4-nano"),
+    "moderator": _env("MODEL_MODERATOR", "gpt-5.4-nano"),
 }
 
 # Эндпоинт Azure AI Foundry (project endpoint, не resource endpoint!)
-FOUNDRY_PROJECT_ENDPOINT = os.getenv("FOUNDRY_PROJECT_ENDPOINT", "")
+FOUNDRY_PROJECT_ENDPOINT = _env("FOUNDRY_PROJECT_ENDPOINT", "")
 
 # --- Офисные посиделки (agents/office_chat.py, workflows/office_chat.py) ---
 # Неформальный чат — самая дешёвая ветка, тут не нужна глубина.
 OFFICE_MODEL_ASSIGNMENTS = {
-    "cto": os.getenv("MODEL_OFFICE_CTO", "gpt-5.4-nano"),
-    "backend_senior": os.getenv("MODEL_OFFICE_BACKEND", "gpt-5.4-nano"),
-    "product_frontend": os.getenv("MODEL_OFFICE_PRODUCT", "gpt-5.4-nano"),
-    "qa_security": os.getenv("MODEL_OFFICE_QA", "gpt-5.4-nano"),
-    "moderator": os.getenv("MODEL_OFFICE_MODERATOR", "gpt-5.4-nano"),
+    "cto": _env("MODEL_OFFICE_CTO", "gpt-5.4-nano"),
+    "backend_senior": _env("MODEL_OFFICE_BACKEND", "gpt-5.4-nano"),
+    "product_frontend": _env("MODEL_OFFICE_PRODUCT", "gpt-5.4-nano"),
+    "qa_security": _env("MODEL_OFFICE_QA", "gpt-5.4-nano"),
+    "moderator": _env("MODEL_OFFICE_MODERATOR", "gpt-5.4-nano"),
     # "Искра" реально копается в коде через tools — нужна модель получше
-    "spark": os.getenv("MODEL_OFFICE_SPARK", "gpt-5.2"),
+    "spark": _env("MODEL_OFFICE_SPARK", "gpt-5.2"),
 }
 
 # --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
 # Чисто техническая экспертиза по BLD System. Мехмат — самый строгий
 # теоретик, ему топовая модель; остальным — по убыванию нагрузки.
 BOARD_MODEL_ASSIGNMENTS = {
-    "mekhmat": os.getenv("MODEL_BOARD_MEKHMAT", "gpt-5.5"),
-    "fiztech": os.getenv("MODEL_BOARD_FIZTECH", "gpt-5.4"),
-    "fizmat": os.getenv("MODEL_BOARD_FIZMAT", "gpt-5.4"),
-    "tehmat": os.getenv("MODEL_BOARD_TEHMAT", "gpt-5.4-mini"),
+    "mekhmat": _env("MODEL_BOARD_MEKHMAT", "gpt-5.5"),
+    "fiztech": _env("MODEL_BOARD_FIZTECH", "gpt-5.4"),
+    "fizmat": _env("MODEL_BOARD_FIZMAT", "gpt-5.4"),
+    "tehmat": _env("MODEL_BOARD_TEHMAT", "gpt-5.4-mini"),
     # Секретарь: ведёт заседание и сжимает итог в отчёт для Telegram.
-    "secretary": os.getenv("MODEL_BOARD_SECRETARY", "gpt-5.4-mini"),
+    "secretary": _env("MODEL_BOARD_SECRETARY", "gpt-5.4-mini"),
     # Формулирует повестку — реально копается в коде через tools,
     # нужна модель, которая нормально работает с git_log/grep_repo.
-    "agenda_setter": os.getenv("MODEL_BOARD_AGENDA", "gpt-5.2"),
+    "agenda_setter": _env("MODEL_BOARD_AGENDA", "gpt-5.2"),
 
     # "Новый сотрудник" — берётся за конкретную задачу со "следующего
     # шага" заседания, реально копается в коде и пишет детальный отчёт.
-    "worker": os.getenv("MODEL_BOARD_WORKER", "gpt-5.4-mini"),
+    "worker": _env("MODEL_BOARD_WORKER", "gpt-5.4-mini"),
 
     # Инженерная команда (agents/engineering.py) — РЕАЛЬНО пишет и
     # коммитит код (в отдельную ветку). Лид — топовая модель, ему
     # доверена вся техническая глубина; привлечённые инженеры дешевле.
-    "lead_engineer": os.getenv("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.5"),
-    "junior_engineer": os.getenv("MODEL_BOARD_JUNIOR_ENGINEER", "gpt-5.4-mini"),
+    "lead_engineer": _env("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.5"),
+    "junior_engineer": _env("MODEL_BOARD_JUNIOR_ENGINEER", "gpt-5.4-mini"),
 }
 
 # --- Правление (agents/executive_board.py, workflows/executive_meeting.py) ---
 # Только COO и HR — остальные бизнес-роли убраны по фидбеку.
 EXEC_MODEL_ASSIGNMENTS = {
-    "coo": os.getenv("MODEL_EXEC_COO", "gpt-5.4-mini"),
-    "hr": os.getenv("MODEL_EXEC_HR", "gpt-5.4-mini"),
-    "secretary": os.getenv("MODEL_EXEC_SECRETARY", "DeepSeek-V4-Flash"),
-    "agenda_setter": os.getenv("MODEL_EXEC_AGENDA", "DeepSeek-V4-Flash"),
-    "worker": os.getenv("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
+    "coo": _env("MODEL_EXEC_COO", "gpt-5.4-mini"),
+    "hr": _env("MODEL_EXEC_HR", "gpt-5.4-mini"),
+    "secretary": _env("MODEL_EXEC_SECRETARY", "DeepSeek-V4-Flash"),
+    "agenda_setter": _env("MODEL_EXEC_AGENDA", "DeepSeek-V4-Flash"),
+    "worker": _env("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
 }
 
 # --- Глобальные гении (agents/global_geniuses.py) ---
@@ -113,50 +127,61 @@ EXEC_MODEL_ASSIGNMENTS = {
 # gpt-5.5 сознательно не раздаём сюда — он остаётся эксклюзивным для
 # Мехмата (совет) и Лид-инженера, чтобы не взорвать косты.
 GLOBAL_MODEL_ASSIGNMENTS = {
-    "mit": os.getenv("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
-    "caltech": os.getenv("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
-    "stanford": os.getenv("MODEL_GENIUS_STANFORD", "Llama-4-Maverick-17B-128E-Instruct-FP8"),  # прикладной AI/стата, продуктовое чутьё
-    "cmu": os.getenv("MODEL_GENIUS_CMU", "Kimi-K2.7-Code"),     # чистый CS, формальные методы, робастность — реально пишет код
-    "tsinghua": os.getenv("MODEL_GENIUS_TSINGHUA", "gpt-5.4-mini"),  # элитный CS, распределённые системы
-    "pku": os.getenv("MODEL_GENIUS_PKU", "gpt-5.4-nano"),     # чистая математика, криптография
-    "ustc": os.getenv("MODEL_GENIUS_USTC", "gpt-5.4-nano"),   # скорость, производительность, AI-вычисления
-    "eth": os.getenv("MODEL_GENIUS_ETH", "gpt-5.4-mini"),     # надёжность, формальная верификация
-    "kaist": os.getenv("MODEL_GENIUS_KAIST", "gpt-5.4-nano"), # HCI, AI-агенты, UX-мышление
+    "mit": _env("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
+    "caltech": _env("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
+    "stanford": _env("MODEL_GENIUS_STANFORD", "Llama-4-Maverick-17B-128E-Instruct-FP8"),  # прикладной AI/стата, продуктовое чутьё
+    "cmu": _env("MODEL_GENIUS_CMU", "Kimi-K2.7-Code"),     # чистый CS, формальные методы, робастность — реально пишет код
+    "tsinghua": _env("MODEL_GENIUS_TSINGHUA", "gpt-5.4-mini"),  # элитный CS, распределённые системы
+    "pku": _env("MODEL_GENIUS_PKU", "gpt-5.4-nano"),     # чистая математика, криптография
+    "ustc": _env("MODEL_GENIUS_USTC", "gpt-5.4-nano"),   # скорость, производительность, AI-вычисления
+    "eth": _env("MODEL_GENIUS_ETH", "gpt-5.4-mini"),     # надёжность, формальная верификация
+    "kaist": _env("MODEL_GENIUS_KAIST", "gpt-5.4-nano"), # HCI, AI-агенты, UX-мышление
 }
 
 # --- Лидерство (agents/leadership.py) ---
 # Chief Scientist — 5-й член совета директоров ("ту ли задачу решаем").
 # VP Engineering — 3-й член правления (приоритизация инженерных задач).
-CHIEF_SCIENTIST_MODEL = os.getenv("MODEL_CHIEF_SCIENTIST", "gpt-5.4")
-VP_ENGINEERING_MODEL = os.getenv("MODEL_VP_ENGINEERING", "gpt-5.4-mini")
+CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.4")
+VP_ENGINEERING_MODEL = _env("MODEL_VP_ENGINEERING", "gpt-5.4-mini")
 
 # --- Review Gate (agents/review_gate.py) ---
 # Проверяют результат инженерной задачи ПЕРЕД тем как отчёт уйдёт
 # Валику — архитектурное вето, качество кода, попытка сломать решение.
 REVIEW_GATE_MODEL_ASSIGNMENTS = {
-    "chief_architect": os.getenv("MODEL_CHIEF_ARCHITECT", "gpt-5.4"),
-    "reviewer": os.getenv("MODEL_REVIEWER", "DeepSeek-V4-Pro"),  # силён в логике/сложности — Big O
-    "failure_engineer": os.getenv("MODEL_FAILURE_ENGINEER", "grok-4.3"),  # дерзкий стиль — специально всё ломает
+    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.4"),
+    "reviewer": _env("MODEL_REVIEWER", "DeepSeek-V4-Pro"),  # силён в логике/сложности — Big O
+    "failure_engineer": _env("MODEL_FAILURE_ENGINEER", "grok-4.3"),  # дерзкий стиль — специально всё ломает
 }
 
 # --- Инженерный спецназ (agents/specialists.py) ---
 # Дополняют пул глобальных гениев в инженерной команде — узкие,
 # практические специализации, которых не было.
 SPECIALIST_MODEL_ASSIGNMENTS = {
-    "database_engineer": os.getenv("MODEL_DATABASE_ENGINEER", "gpt-5.4-mini"),
-    "performance_engineer": os.getenv("MODEL_PERFORMANCE_ENGINEER", "gpt-5.4-mini"),
-    "security_engineer": os.getenv("MODEL_SECURITY_ENGINEER", "gpt-5.4-mini"),
-    "reliability_engineer": os.getenv("MODEL_RELIABILITY_ENGINEER", "gpt-5.4-mini"),
+    "database_engineer": _env("MODEL_DATABASE_ENGINEER", "gpt-5.4-mini"),
+    "performance_engineer": _env("MODEL_PERFORMANCE_ENGINEER", "gpt-5.4-mini"),
+    "security_engineer": _env("MODEL_SECURITY_ENGINEER", "gpt-5.4-mini"),
+    "reliability_engineer": _env("MODEL_RELIABILITY_ENGINEER", "gpt-5.4-mini"),
 }
 
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
 # Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
-KNOWLEDGE_CURATOR_MODEL = os.getenv("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
+KNOWLEDGE_CURATOR_MODEL = _env("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
 
 # --- Инженерные отряды (agents/squads.py, workflows/squad_task.py) ---
 # Постоянные команды (не ad-hoc подбор) — работают параллельно над
 # РАЗНЫМИ задачами. Лиды на проверенных gpt-моделях (эти роли реально
 # пишут код через write_file — надёжность tool-calling тут важнее
 # экспериментов с новыми провайдерами).
-SQUAD_LEAD_ALPHA_MODEL = os.getenv("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
-SQUAD_LEAD_BRAVO_MODEL = os.getenv("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
+SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
+SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
+
+# --- Рост команды (agents/growth_team.py) ---
+# 4 новые роли под конкретные пробелы: эксплуатация AI-пайплайна,
+# инфраструктура/деплой, дизайн интерфейсов, и менторство молодых
+# гениев (развитие людей — то, чего не хватало как процесса).
+GROWTH_MODEL_ASSIGNMENTS = {
+    "mlops_engineer": _env("MODEL_MLOPS_ENGINEER", "gpt-5.4-mini"),
+    "devops_engineer": _env("MODEL_DEVOPS_ENGINEER", "gpt-5.4-mini"),
+    "product_designer": _env("MODEL_PRODUCT_DESIGNER", "gpt-5.4-mini"),
+    "engineering_mentor": _env("MODEL_ENGINEERING_MENTOR", "gpt-5.4-mini"),
+}
