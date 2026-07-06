@@ -15,6 +15,7 @@ from agent_framework import Message
 
 from agents.executive_board import build_executive_board
 from agents.global_geniuses import GLOBAL_LABELS
+from agents.growth_team import GROWTH_LABELS
 from agents.specialists import SPECIALIST_LABELS
 from agents.roster import build_full_roster
 from config.models import EXEC_MODEL_ASSIGNMENTS
@@ -32,6 +33,7 @@ ROLE_LABELS = {
     "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR", "vp_engineering": "📐 VP Engineering", "squad_lead_alpha": "🅰️  Squad Lead Alpha", "squad_lead_bravo": "🅱️  Squad Lead Bravo",
     **GLOBAL_LABELS,
     **SPECIALIST_LABELS,
+    **GROWTH_LABELS,
 }
 
 
