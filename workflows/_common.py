@@ -57,6 +57,40 @@ def load_recent_topics(state_file: str, limit: int = 8) -> list[str]:
         return []
 
 
+def load_rotation_turn(key: str) -> int:
+    """Читает текущий 'ход' ротации (0 или 1) из .state/{key}.json —
+    используется чтобы простаивающий отряд не искал себе задачу КАЖДЫЙ
+    раз (это и создавало риск постоянного шума от несвязанных
+    параллельных веток), а только через раз."""
+    path = STATE_DIR / f"{key}.json"
+    if not path.exists():
+        return 0
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("turn", 0)
+    except Exception:
+        return 0
+
+
+def save_rotation_turn(key: str, turn: int) -> None:
+    """Сохраняет 'ход' ротации и коммитит обратно в репозиторий bld-team."""
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / f"{key}.json"
+    path.write_text(json.dumps({"turn": turn}), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: ротация ({key})"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[rotation] Не удалось сохранить ротацию в git: {e}")
+
+
 def save_topic(state_file: str, topic: str) -> None:
     """Дописывает тему в файл памяти и коммитит его обратно в репозиторий
     bld-team (использует git-креды, уже настроенные actions/checkout).
