@@ -17,17 +17,19 @@ from datetime import datetime
 from agents.engineering import build_lead_engineer, build_specialist_pool
 from agents.global_geniuses import GLOBAL_LABELS
 from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
+from agents.growth_team import GROWTH_LABELS
+from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
 from agents.review_gate import run_review_gate
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
-from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
+from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
 from tools.repo_tools import commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
 from workflows._common import curate_knowledge, sync_repos_or_alert
 
-ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS}
-ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS}
-ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS}
+ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS}
+ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS}
+ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS}
 
 # Ключевые слова, по которым понимаем, что лид явно попросил помощи —
 # простая эвристика, не идеальная, но рабочая без сложного парсинга
@@ -77,15 +79,35 @@ def needs_rework(verdict_text: str) -> bool:
     return any(marker in upper for marker in NEGATIVE_VERDICT_MARKERS)
 
 
-async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
+async def run_engineering_task(
+    task: str,
+    repo_name: str | None = None,
+    lead_agent=None,
+    lead_label: str = "Ведущий инженер",
+    lead_model: str | None = None,
+    helper_pool: dict | None = None,
+    branch_prefix: str = "ai-eng",
+) -> str:
+    """Полный цикл: ветка -> лид пишет код -> (опционально) привлекает
+    помощь -> коммит/пуш -> Review Gate -> (опционально) переделка по
+    вето -> отчёт.
+
+    По умолчанию (без доп. параметров) — старое поведение: одиночный
+    лид-инженер (gpt-5.5) + полный пул из 13 специалистов. Параметры
+    lead_agent/helper_pool позволяют переиспользовать эту же логику
+    для постоянных отрядов (workflows/squad_task.py) — свой лид, свой
+    ограниченный пул участников отряда.
+    """
     repo_name = repo_name or guess_repo(task)
-    branch_name = f"ai-eng/{slugify(task)}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    branch_name = f"{branch_prefix}/{slugify(task)}-{datetime.now().strftime('%Y%m%d-%H%M')}"
 
     print(f"Создаём ветку {branch_name} в {repo_name}...")
     print(create_branch(repo_name, branch_name))
 
-    lead_model = BOARD_MODEL_ASSIGNMENTS.get("lead_engineer", "gpt-5.5")
-    lead = build_lead_engineer(lead_model)
+    lead_model = lead_model or BOARD_MODEL_ASSIGNMENTS.get("lead_engineer", "gpt-5.5")
+    lead = lead_agent or build_lead_engineer(lead_model)
+    pool = helper_pool if helper_pool is not None else build_specialist_pool()
+    pool_keywords = {k: v for k, v in ALL_SPECIALTY_KEYWORDS.items() if k in pool} if helper_pool is not None else ALL_SPECIALTY_KEYWORDS
 
     prompt = f"""
 Задача: {task}
@@ -94,7 +116,7 @@ async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
 и является текущей — просто пиши файлы через write_file, изменения
 автоматически попадут в неё.
 """
-    print("Ведущий инженер разбирается с задачей и пишет код...")
+    print(f"{lead_label} разбирается с задачей и пишет код...")
     lead_response = await lead.run(prompt)
     lead_summary = lead_response.text.strip()
 
@@ -106,23 +128,22 @@ async def run_engineering_task(task: str, repo_name: str | None = None) -> str:
             "Код не писался, ветка не тронута, review gate не запускался."
         )
 
-    findings = [f"👷‍♂️ Ведущий инженер ({lead_model}):\n{lead_summary}"]
+    findings = [f"👷‍♂️ {lead_label} ({lead_model}):\n{lead_summary}"]
 
-    if any(kw in lead_summary.lower() for kw in HELP_KEYWORDS):
-        matched_names = find_matching_specialists(lead_summary, max_specialists=2)
+    if any(kw in lead_summary.lower() for kw in HELP_KEYWORDS) and pool:
+        matched_names = [n for n in find_matching_specialists(lead_summary, max_specialists=2) if n in pool]
         if not matched_names:
             import random
-            matched_names = [random.choice(list(ALL_SPECIALTY_KEYWORDS.keys()))]
+            matched_names = [random.choice(list(pool.keys()))]
 
-        print(f"Ведущий инженер запросил помощь — нанимаем: {', '.join(matched_names)}...")
-        pool = build_specialist_pool()
+        print(f"{lead_label} запросил помощь — привлекаем: {', '.join(matched_names)}...")
 
         for name in matched_names:
             specialist = pool[name]
             label = ALL_SPECIALIST_LABELS.get(name, name)
             model_name = ALL_SPECIALIST_MODELS.get(name, "?")
             specialist_prompt = f"""
-Ведущий инженер оставил такое описание задачи и своей части работы:
+{lead_label} оставил такое описание задачи и своей части работы:
 
 {lead_summary}
 
@@ -165,7 +186,7 @@ Review Gate (Chief Architect / Reviewer / Failure Engineer — все
 кратко опиши, что именно исправил по каждому замечанию.
 """
         rework_response = await lead.run(rework_prompt)
-        findings.append(f"🔄 Ведущий инженер (доработка по вето Review Gate):\n{rework_response.text.strip()}")
+        findings.append(f"🔄 {lead_label} (доработка по вето Review Gate):\n{rework_response.text.strip()}")
         engineering_summary = "\n\n".join(findings)
 
         push_result_2 = commit_and_push(repo_name, branch_name, "AI engineering: доработка по замечаниям Review Gate")
