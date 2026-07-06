@@ -23,22 +23,24 @@ import sys
 from agent_framework import Message
 
 from agents.global_geniuses import GLOBAL_LABELS
+from agents.specialists import SPECIALIST_LABELS
 from agents.roster import CODE_ACCESS_ROLES, build_full_roster
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, run_free_conversation, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, run_free_conversation, sync_repos_or_alert
 
 MAX_TURNS = 10  # раунды разговора в паре/тройке — короче группового заседания
 
 ROLE_LABELS = {
     "mekhmat": "🔢 Мехмат", "fiztech": "⚙️  Физтех",
-    "fizmat": "🎲 Физмат", "tehmat": "♟️  Техмат",
+    "fizmat": "🎲 Физмат", "tehmat": "♟️  Техмат", "chief_scientist": "🔭 Chief Scientist",
     "cto": "🧑‍💼 CTO", "backend_senior": "⌨️  Backend",
     "product_frontend": "🎨 Product/Frontend", "qa_security": "🔒 QA/Security",
-    "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR",
+    "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR", "vp_engineering": "📐 VP Engineering", "squad_lead_alpha": "🅰️  Squad Lead Alpha", "squad_lead_bravo": "🅱️  Squad Lead Bravo",
     **GLOBAL_LABELS,
+    **SPECIALIST_LABELS,
 }
 
 OPENING_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
@@ -171,6 +173,8 @@ async def main():
 
     print(f"\n{'=' * 60}\n{report}")
     send_telegram_report(report)
+
+    await curate_knowledge("Лаборатория", report)
 
 
 if __name__ == "__main__":
