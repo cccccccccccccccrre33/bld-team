@@ -19,7 +19,7 @@ import sys
 from agents.squads import SQUADS
 from tools.repo_tools import clone_or_update_repos, grep_repo, git_log
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge
+from workflows._common import ask, compile_brief, curate_knowledge
 from workflows.cto_approval import cto_approval
 from workflows.squad_task import run_squad_task
 from workflows.task_board import (
@@ -172,8 +172,10 @@ async def run_squad_initiative(squad_key: str) -> None:
         f"{'🔓 Взято самостоятельно (мелкое)' if minor else f'✅ Одобрено CTO: {cto_comment}'}\n\n"
         + report
     )
-    print(full_report)
-    send_telegram_report(full_report)
+    brief = await compile_brief(full_report)
+    print(f"\n[ПОЛНЫЙ ОТЧЁТ]\n{full_report}")
+    print(f"\n[КОРОТКО В TELEGRAM]\n{brief}")
+    send_telegram_report(brief)
     await curate_knowledge(f"Инициатива: {squad_label}", full_report)
 
 
