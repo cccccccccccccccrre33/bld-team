@@ -115,7 +115,13 @@ BOARD_MODEL_ASSIGNMENTS = {
 EXEC_MODEL_ASSIGNMENTS = {
     "coo": _env("MODEL_EXEC_COO", "gpt-5.4"),
     "hr": _env("MODEL_EXEC_HR", "gpt-5.4"),
-    "secretary": _env("MODEL_EXEC_SECRETARY", "DeepSeek-V4-Flash"),
+    # ВАЖНО: используется как orchestrator_agent в GroupChatBuilder
+    # (executive_meeting.py) — сторонние модели через Chat Completions
+    # API падают с "Messages are required for chat completions" на
+    # внутренней механике оркестрации GroupChat (Responses API у
+    # gpt-моделей такое терпит молча, Chat Completions — нет). Поэтому
+    # здесь ТОЛЬКО gpt-модель, независимо от остального тюнинга.
+    "secretary": _env("MODEL_EXEC_SECRETARY", "gpt-5.4-mini"),
     "agenda_setter": _env("MODEL_EXEC_AGENDA", "DeepSeek-V4-Flash"),
     "worker": _env("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
 }
