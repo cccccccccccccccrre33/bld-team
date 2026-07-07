@@ -1,0 +1,49 @@
+name: Squad Patrol
+
+on:
+  schedule:
+    # Каждые 3 часа, 9:00-21:00 Киев (6,9,12,15,18 UTC) — намного чаще,
+    # чем заседания совета, это и есть решение проблемы "мало что
+    # происходит за день".
+    - cron: '0 6,9,12,15,18 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  patrol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run squad patrol
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "Синхронизация репозиториев для патруля..."
+          python -c "
+          import asyncio
+          from tools.repo_tools import clone_or_update_repos
+          print(clone_or_update_repos())
+          "
+          python main_squad_patrol.py
