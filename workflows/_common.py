@@ -57,6 +57,204 @@ def load_recent_topics(state_file: str, limit: int = 8) -> list[str]:
         return []
 
 
+def load_task_board(limit: int = 15) -> list[dict]:
+    """Общая доска задач — видят оба отряда, чтобы не дублировать работу.
+    Хранится в .state/task_board.json, коммитится в bld-team."""
+    path = STATE_DIR / "task_board.json"
+    if not path.exists():
+        return []
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+        return board[-limit:]
+    except Exception:
+        return []
+
+
+def save_task_board_entry(entry: dict) -> None:
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "task_board.json"
+    board = []
+    if path.exists():
+        try:
+            board = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            board = []
+    board.append(entry)
+    board = board[-50:]
+    path.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", "chore: обновление доски задач"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[task board] Не удалось сохранить: {e}")
+
+
+def load_task_board(limit: int = 15) -> list[dict]:
+    """Общая доска задач всех отрядов — чтобы не дублировать работу и
+    видеть, что уже сделано/в процессе/отклонено. Файл коммитится в
+    репозиторий bld-team (не bld-system!), как и память тем."""
+    path = STATE_DIR / "task_board.json"
+    if not path.exists():
+        return []
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+        return board[-limit:]
+    except Exception:
+        return []
+
+
+def save_task_board_entry(entry: dict) -> None:
+    """Добавляет запись в доску задач и коммитит обратно в репозиторий."""
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "task_board.json"
+    board = []
+    if path.exists():
+        try:
+            board = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            board = []
+    board.append(entry)
+    board = board[-100:]
+    path.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: доска задач — {entry.get('squad', '?')}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[task board] Не удалось сохранить в git: {e}")
+
+
+def load_task_board(limit: int = 15) -> list[dict]:
+    """Общая доска задач всех отрядов — чтобы не дублировать работу и
+    видеть, что уже сделано/в процессе. Хранится в .state/task_board.json,
+    коммитится в репозиторий bld-team (не bld-system)."""
+    path = STATE_DIR / "task_board.json"
+    if not path.exists():
+        return []
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+        return board[-limit:]
+    except Exception:
+        return []
+
+
+def save_task_board_entry(entry: dict) -> None:
+    """Добавляет запись на доску задач и коммитит файл обратно."""
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "task_board.json"
+    board = []
+    if path.exists():
+        try:
+            board = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            board = []
+    board.append(entry)
+    board = board[-50:]
+    path.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: доска задач ({entry.get('squad', '?')})"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[task board] Не удалось сохранить: {e}")
+
+
+def load_task_board(limit: int = 20) -> list[dict]:
+    """Читает общую доску задач отрядов — чтобы разные отряды видели,
+    что уже сделано/в работе, и не дублировали друг друга."""
+    path = STATE_DIR / "task_board.json"
+    if not path.exists():
+        return []
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+        return board[-limit:]
+    except Exception:
+        return []
+
+
+def save_task_board_entry(entry: dict) -> None:
+    """Дописывает запись в доску задач и коммитит обратно в bld-team."""
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "task_board.json"
+    board = load_task_board(limit=200)
+    board.append(entry)
+    board = board[-100:]
+    path.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: доска задач — {entry.get('squad', '?')}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[task board] Не удалось сохранить в git: {e}")
+
+
+def load_task_board(limit: int = 15) -> list[dict]:
+    """Читает доску задач — общий журнал того, что отряды уже делают/
+    сделали, чтобы не дублировать работу друг друга."""
+    path = STATE_DIR / "task_board.json"
+    if not path.exists():
+        return []
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+        return board[-limit:]
+    except Exception:
+        return []
+
+
+def save_task_board_entry(entry: dict) -> None:
+    """Добавляет запись в доску задач и коммитит обратно в репозиторий."""
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "task_board.json"
+    board = []
+    if path.exists():
+        try:
+            board = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            board = []
+    board.append(entry)
+    board = board[-100:]
+    path.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(["git", "commit", "-m", "chore: доска задач обновлена"], capture_output=True, text=True)
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[task board] Не удалось сохранить: {e}")
+
+
 def load_rotation_turn(key: str) -> int:
     """Читает текущий 'ход' ротации (0 или 1) из .state/{key}.json —
     используется чтобы простаивающий отряд не искал себе задачу КАЖДЫЙ
@@ -89,6 +287,64 @@ def save_rotation_turn(key: str, turn: int) -> None:
             subprocess.run(["git", "push"], check=True)
     except Exception as e:
         print(f"[rotation] Не удалось сохранить ротацию в git: {e}")
+
+
+def load_active_work(limit: int = 15) -> list[dict]:
+    """Читает журнал активной/недавней работы (.state/active_work.json) —
+    чтобы разные команды видели, что уже делается или недавно сделано,
+    и не хватались за одно и то же одновременно."""
+    path = STATE_DIR / "active_work.json"
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))[-limit:]
+    except Exception:
+        return []
+
+
+def record_work(squad_or_team: str, task: str, branch_name: str, status: str) -> None:
+    """Записывает запись в журнал активной работы и коммитит в
+    репозиторий. status: 'in_progress' | 'done' | 'rejected'."""
+    from datetime import datetime
+
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "active_work.json"
+    entries = []
+    if path.exists():
+        try:
+            entries = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            entries = []
+    entries.append({
+        "team": squad_or_team,
+        "task": task,
+        "branch": branch_name,
+        "status": status,
+        "time": datetime.now().strftime("%d.%m.%Y %H:%M"),
+    })
+    entries = entries[-50:]
+    path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: журнал работы ({squad_or_team})"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[active work] Не удалось сохранить журнал в git: {e}")
+
+
+def format_active_work_context(entries: list[dict]) -> str:
+    """Форматирует журнал в текст для промпта — 'что уже делается/сделано'."""
+    if not entries:
+        return "(журнал пуст — пока никто ничего не делал)"
+    lines = [f"- [{e['status']}] {e['team']}: {e['task']} (ветка {e['branch']}, {e['time']})" for e in entries]
+    return "\n".join(lines)
 
 
 def save_topic(state_file: str, topic: str) -> None:
@@ -211,6 +467,47 @@ _META_COMPLAINT_MARKERS = [
 ]
 
 
+def load_task_board(limit: int = 15) -> list[dict]:
+    """Общая доска задач — чтобы отряды видели, что уже делается/сделано,
+    и не дублировали работу друг друга."""
+    path = STATE_DIR / "task_board.json"
+    if not path.exists():
+        return []
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+        return board[-limit:]
+    except Exception:
+        return []
+
+
+def save_task_board_entry(entry: dict) -> None:
+    """Дописывает запись в доску задач и коммитит обратно в bld-team."""
+    STATE_DIR.mkdir(exist_ok=True)
+    path = STATE_DIR / "task_board.json"
+    board = []
+    if path.exists():
+        try:
+            board = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            board = []
+    board.append(entry)
+    board = board[-50:]
+    path.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", "chore: доска задач обновлена"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[task board] Не удалось сохранить доску в git: {e}")
+
+
 def looks_like_meta_complaint(text: str) -> bool:
     """True, если текст похож на жалобу модели ('пришлите стенограмму'),
     а не на реальную постановку задачи."""
@@ -253,6 +550,35 @@ read_file, git_log, git_diff, grep_repo) — используй их, ЕСЛИ �
     )
     response = await worker.run(f"Твоя задача: {task}\n\nРазберись в реальном коде и напиши отчёт.")
     return response.text.strip()
+
+
+async def compile_brief(full_report: str, header_emoji: str = "🏁") -> str:
+    """Сжимает подробный отчёт (инженерная задача/отряд) в короткий,
+    в духе того, как CTO кратко резюмирует на созвоне — не бюрократический
+    документ с разделами, а 5-8 строк по существу. Полная версия всё
+    равно уходит в вики через curate_knowledge — здесь только то, что
+    летит в Telegram."""
+    from config.client_factory import get_chat_client
+    from config.models import GROWTH_MODEL_ASSIGNMENTS
+
+    client = get_chat_client(GROWTH_MODEL_ASSIGNMENTS.get("mlops_engineer", "gpt-5.4"))
+    prompt = f"""
+Вот подробный отчёт о технической работе:
+
+{full_report}
+
+Сожми до короткого отчёта в стиле "CTO кратко резюмирует на созвоне" —
+5-8 строк, без бюрократических разделов и заголовков-простыней. Формат:
+
+[что сделано, одна строка]
+[кто делал / какой отряд, если релевантно]
+[вердикт Review Gate одной строкой: одобрено / были замечания-исправлено / отклонено]
+[ветка для мерджа]
+[если что-то важное пошло не так — одна строка, иначе не пиши]
+
+Без markdown-звёздочек, простой текст для Telegram.
+"""
+    return await ask(client, prompt)
 
 
 async def curate_knowledge(source_label: str, content: str) -> None:
