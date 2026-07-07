@@ -52,16 +52,16 @@ def _env(key: str, default: str) -> str:
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": _env("MODEL_CTO", "Mistral-Large-3"),
+    "cto": _env("MODEL_CTO", "gpt-5.5"),
 
     # Дотошный сильный синьор-бэкендер
-    "backend_senior": _env("MODEL_BACKEND", "gpt-5.4-mini"),
+    "backend_senior": _env("MODEL_BACKEND", "gpt-5.4"),
 
     # Продукт / фронт / UX — не нужна максимальная глубина
     "product_frontend": _env("MODEL_PRODUCT", "gpt-5.4-nano"),
 
     # QA / Security — параноик, ищет edge-cases
-    "qa_security": _env("MODEL_QA", "gpt-5.4-mini"),
+    "qa_security": _env("MODEL_QA", "gpt-5.4"),
 
     # Не участник дискуссии — "руки", читающие репозиторий.
     "code_scout": _env("MODEL_CODE_SCOUT", "gpt-5.2"),
@@ -76,10 +76,10 @@ FOUNDRY_PROJECT_ENDPOINT = _env("FOUNDRY_PROJECT_ENDPOINT", "")
 # --- Офисные посиделки (agents/office_chat.py, workflows/office_chat.py) ---
 # Неформальный чат — самая дешёвая ветка, тут не нужна глубина.
 OFFICE_MODEL_ASSIGNMENTS = {
-    "cto": _env("MODEL_OFFICE_CTO", "gpt-5.4-nano"),
-    "backend_senior": _env("MODEL_OFFICE_BACKEND", "gpt-5.4-nano"),
-    "product_frontend": _env("MODEL_OFFICE_PRODUCT", "gpt-5.4-nano"),
-    "qa_security": _env("MODEL_OFFICE_QA", "gpt-5.4-nano"),
+    "cto": _env("MODEL_OFFICE_CTO", "gpt-5.4-mini"),
+    "backend_senior": _env("MODEL_OFFICE_BACKEND", "gpt-5.4-mini"),
+    "product_frontend": _env("MODEL_OFFICE_PRODUCT", "gpt-5.4-mini"),
+    "qa_security": _env("MODEL_OFFICE_QA", "gpt-5.4-mini"),
     "moderator": _env("MODEL_OFFICE_MODERATOR", "gpt-5.4-nano"),
     # "Искра" реально копается в коде через tools — нужна модель получше
     "spark": _env("MODEL_OFFICE_SPARK", "gpt-5.2"),
@@ -113,8 +113,8 @@ BOARD_MODEL_ASSIGNMENTS = {
 # --- Правление (agents/executive_board.py, workflows/executive_meeting.py) ---
 # Только COO и HR — остальные бизнес-роли убраны по фидбеку.
 EXEC_MODEL_ASSIGNMENTS = {
-    "coo": _env("MODEL_EXEC_COO", "gpt-5.4-mini"),
-    "hr": _env("MODEL_EXEC_HR", "gpt-5.4-mini"),
+    "coo": _env("MODEL_EXEC_COO", "gpt-5.4"),
+    "hr": _env("MODEL_EXEC_HR", "gpt-5.4"),
     "secretary": _env("MODEL_EXEC_SECRETARY", "DeepSeek-V4-Flash"),
     "agenda_setter": _env("MODEL_EXEC_AGENDA", "DeepSeek-V4-Flash"),
     "worker": _env("MODEL_EXEC_WORKER", "gpt-5.4-mini"),
@@ -132,23 +132,23 @@ GLOBAL_MODEL_ASSIGNMENTS = {
     "stanford": _env("MODEL_GENIUS_STANFORD", "Llama-4-Maverick-17B-128E-Instruct-FP8"),  # прикладной AI/стата, продуктовое чутьё
     "cmu": _env("MODEL_GENIUS_CMU", "Kimi-K2.7-Code"),     # чистый CS, формальные методы, робастность — реально пишет код
     "tsinghua": _env("MODEL_GENIUS_TSINGHUA", "gpt-5.4-mini"),  # элитный CS, распределённые системы
-    "pku": _env("MODEL_GENIUS_PKU", "gpt-5.4-nano"),     # чистая математика, криптография
-    "ustc": _env("MODEL_GENIUS_USTC", "gpt-5.4-nano"),   # скорость, производительность, AI-вычисления
+    "pku": _env("MODEL_GENIUS_PKU", "gpt-5.4-mini"),     # чистая математика, криптография
+    "ustc": _env("MODEL_GENIUS_USTC", "gpt-5.4-mini"),   # скорость, производительность, AI-вычисления
     "eth": _env("MODEL_GENIUS_ETH", "gpt-5.4-mini"),     # надёжность, формальная верификация
-    "kaist": _env("MODEL_GENIUS_KAIST", "gpt-5.4-nano"), # HCI, AI-агенты, UX-мышление
+    "kaist": _env("MODEL_GENIUS_KAIST", "gpt-5.4-mini"), # HCI, AI-агенты, UX-мышление
 }
 
 # --- Лидерство (agents/leadership.py) ---
 # Chief Scientist — 5-й член совета директоров ("ту ли задачу решаем").
 # VP Engineering — 3-й член правления (приоритизация инженерных задач).
-CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.4")
-VP_ENGINEERING_MODEL = _env("MODEL_VP_ENGINEERING", "gpt-5.4-mini")
+CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.5")
+VP_ENGINEERING_MODEL = _env("MODEL_VP_ENGINEERING", "gpt-5.4")
 
 # --- Review Gate (agents/review_gate.py) ---
 # Проверяют результат инженерной задачи ПЕРЕД тем как отчёт уйдёт
 # Валику — архитектурное вето, качество кода, попытка сломать решение.
 REVIEW_GATE_MODEL_ASSIGNMENTS = {
-    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.4"),
+    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.5"),
     "reviewer": _env("MODEL_REVIEWER", "DeepSeek-V4-Pro"),  # силён в логике/сложности — Big O
     "failure_engineer": _env("MODEL_FAILURE_ENGINEER", "grok-4.3"),  # дерзкий стиль — специально всё ломает
 }
@@ -157,10 +157,10 @@ REVIEW_GATE_MODEL_ASSIGNMENTS = {
 # Дополняют пул глобальных гениев в инженерной команде — узкие,
 # практические специализации, которых не было.
 SPECIALIST_MODEL_ASSIGNMENTS = {
-    "database_engineer": _env("MODEL_DATABASE_ENGINEER", "gpt-5.4-mini"),
-    "performance_engineer": _env("MODEL_PERFORMANCE_ENGINEER", "gpt-5.4-mini"),
-    "security_engineer": _env("MODEL_SECURITY_ENGINEER", "gpt-5.4-mini"),
-    "reliability_engineer": _env("MODEL_RELIABILITY_ENGINEER", "gpt-5.4-mini"),
+    "database_engineer": _env("MODEL_DATABASE_ENGINEER", "gpt-5.4"),
+    "performance_engineer": _env("MODEL_PERFORMANCE_ENGINEER", "gpt-5.4"),
+    "security_engineer": _env("MODEL_SECURITY_ENGINEER", "gpt-5.4"),
+    "reliability_engineer": _env("MODEL_RELIABILITY_ENGINEER", "gpt-5.4"),
 }
 
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
@@ -172,16 +172,16 @@ KNOWLEDGE_CURATOR_MODEL = _env("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
 # РАЗНЫМИ задачами. Лиды на проверенных gpt-моделях (эти роли реально
 # пишут код через write_file — надёжность tool-calling тут важнее
 # экспериментов с новыми провайдерами).
-SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
-SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
+SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.5")
+SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.5")
 
 # --- Рост команды (agents/growth_team.py) ---
 # 4 новые роли под конкретные пробелы: эксплуатация AI-пайплайна,
 # инфраструктура/деплой, дизайн интерфейсов, и менторство молодых
 # гениев (развитие людей — то, чего не хватало как процесса).
 GROWTH_MODEL_ASSIGNMENTS = {
-    "mlops_engineer": _env("MODEL_MLOPS_ENGINEER", "gpt-5.4-mini"),
-    "devops_engineer": _env("MODEL_DEVOPS_ENGINEER", "gpt-5.4-mini"),
+    "mlops_engineer": _env("MODEL_MLOPS_ENGINEER", "gpt-5.4"),
+    "devops_engineer": _env("MODEL_DEVOPS_ENGINEER", "gpt-5.4"),
     "product_designer": _env("MODEL_PRODUCT_DESIGNER", "gpt-5.4-mini"),
     "engineering_mentor": _env("MODEL_ENGINEERING_MENTOR", "gpt-5.4-mini"),
 }
