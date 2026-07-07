@@ -25,7 +25,7 @@ from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
 from tools.repo_tools import commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
-from workflows._common import curate_knowledge, sync_repos_or_alert
+from workflows._common import compile_brief, curate_knowledge, sync_repos_or_alert
 
 ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS}
 ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS}
@@ -235,7 +235,10 @@ async def main():
 
     report = await run_engineering_task(task)
     print(f"\n{report}")
-    send_telegram_report(report)
+
+    brief = await compile_brief(report)
+    print(f"\n[КОРОТКО]\n{brief}")
+    send_telegram_report(brief)
 
     await curate_knowledge("Инженерная задача", report)
 
