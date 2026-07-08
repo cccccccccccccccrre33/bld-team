@@ -34,12 +34,12 @@
       "id": "database_engineer-20260708165728",
       "title": "Исправить неконсистентный статус в anomaly_candidates: код пишет `pending_review`, а CHECK-constraint в БД разрешает только `open|superseded|closed`",
       "squad": "database_engineer",
-      "status": "in_progress",
+      "status": "done",
       "reason": "В `anomaly/decision_snapshot_service.py` функция `_apply_candidate_state()` присваивает `candidate.status = \"pending_review\"`, но в миграции `database/migration_20260509_055_anomaly_decision_snapshots.sql` constraint `ck_anomaly_candidates_status` допускает только `open`, `superseded`, `closed`. Это не просто логическая шероховатость: при первом flush/commit запись кандидата может падать на constraint violation, ломая сохранение reviewable anomaly и создавая хрупкое поведение под нагрузкой.",
       "how": "Нужно привести доменную модель и физическую схему к одному контракту: либо добавить `pending_review` в допустимые значения БД, либо перестать писать этот статус из кода и использовать уже разрешённый `open`. Дополнительно надо проверить все чтения/фильтры по `anomaly_candidates.status`, чтобы не осталось скрытого рассинхрона между API, аналитикой и индексами.",
       "created": "08.07.2026 16:57",
       "cto_comment": ""
     }
   ],
-  "last_updated": "08.07.2026 16:57"
+  "last_updated": "08.07.2026 17:05"
 }
