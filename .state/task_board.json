@@ -19,7 +19,17 @@
       "how": "Изменить `get_owner_activation_base_url()` так, чтобы дефолт `http://localhost:{PORT}` использовался только при явном `environment=development` (или аналогичном флаге), а во всех остальных окружениях — выбрасывалась ошибка/логировался критический конфиг. Добавить тест, который гарантирует: в production/staging без `OWNER_ACTIVATION_BASE_URL` функция падает, а в development — возвращает localhost.",
       "created": "08.07.2026 09:26",
       "cto_comment": "Проверил код: `core/owner_activation.py` сейчас действительно отдаёт `http://localhost:{PORT}` для любого окружения, кроме `production`, то есть staging/misconfig легко получит битые customer-facing activation-ссылки. Дубля в работе нет — это ровно задача из pending approval, в вики такого решения не зафиксировано. Чинить просто: использовать уже существующий `settings.ENVIRONMENT`, разрешить localhost только для `development`, а в staging/production падать тестируемой ошибкой; новый флаг не городить."
+    },
+    {
+      "id": "bravo-20260708141021",
+      "title": "В `bld-panel/vite.config.js` убрать небезопасный дефолт dev-прокси `target: 'http://localhost:8000'` и запретить HTTP/localhost в non-dev окружениях",
+      "squad": "bravo",
+      "status": "proposed",
+      "reason": "Сейчас при отсутствии `VITE_DEV_PROXY_TARGET` фронтенд по умолчанию проксирует API на `http://localhost:8000`, что может привести к случайным деплоям/прогонам (preview/CI) с запросами в localhost по HTTP. Это риск SSRF/ошибочного маршрутизации и источник трудноотлавливаемых сбоев, если конфиг окружения не задан строго.",
+      "how": "Сделать `VITE_DEV_PROXY_TARGET` обязательным для режима `development`, а в `preview/production` полностью отключать dev-proxy. Добавить валидацию: запрещать `http://` и `localhost/127.0.0.1` вне dev, при нарушении — падать с явной ошибкой сборки/старта.",
+      "created": "08.07.2026 14:10",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "08.07.2026 09:40"
+  "last_updated": "08.07.2026 14:10"
 }
