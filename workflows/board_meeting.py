@@ -1,343 +1,132 @@
 """
-Заседание совета директоров — автономный режим.
+Главный сценарий:
 
-Сценарий:
-1. agenda_setter сам формулирует стратегический вопрос (или берёт из CLI).
-2. GroupChat: mekhmat, fiztech, fizmat, tehmat спорят.
-3. Секретарь составляет ПОЛНЫЙ красивый отчёт со стенограммой —
-   не краткое резюме, а живой документ где виден характер каждого.
-4. Отчёт уходит в Telegram (несколькими сообщениями если длинный).
+1. clone_or_update_repos() — синхронизируем оба репо локально.
+2. Topic Scout (на code-модели) смотрит git_log обоих репозиториев,
+   выбирает последний содержательный коммит/изменение и формулирует
+   ОДИН конкретный спорный вопрос для команды (не "обсудите проект",
+   а "вот это изменение в L7 — это решение или забытый баг?").
+3. Запускается GroupChat: CTO, Backend Senior, Product/Frontend,
+   QA/Security обсуждают этот вопрос. Модератор (отдельный Agent)
+   решает, кто говорит следующим — без жёсткого round-robin,
+   ориентируясь на то, кто реально хочет/должен ответить дальше.
+4. Дискуссия останавливается по term. условию (число сообщений)
+   ИЛИ когда модератор решает, что пришли к выводу.
 """
 
 import asyncio
-import sys
-from datetime import datetime
 
 from agent_framework import Message
 from agent_framework.orchestrations import GroupChatBuilder
 
-from agents.board import build_board, COMPANY_CONTEXT
+from agents.team import build_team
 from config.client_factory import get_chat_client
-from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
-from tools.telegram_report import send_telegram_report
-from workflows._common import (
-    ask,
-    compile_brief,
-    curate_knowledge,
-    extract_messages,
-    extract_next_step,
-    load_recent_topics,
-    load_rotation_turn,
-    looks_like_meta_complaint,
-    save_rotation_turn,
-    save_topic,
-    sync_repos_or_alert,
-)
-from workflows.squad_task import dispatch_squads, run_squad_relay, task_spans_both_domains
-from agents.squads import SQUADS
+from config.models import MODEL_ASSIGNMENTS
+from tools.repo_tools import git_log
+from workflows._common import ask, extract_messages, sync_repos_or_alert
+
+MAX_MESSAGES = 24  # защита от бесконечного спора / траты кредитов
 
 
-def assign_task_to_squad(task: str) -> str:
-    """По ключевым словам решает, какому отряду ближе задача. Если
-    непонятно — по умолчанию Альфа (ядро/данные), т.к. большинство
-    задач у BLD пока про сам движок/данные, а не про надёжность/security."""
-    lowered = task.lower()
-    for key in ("bravo", "alpha"):
-        if any(kw in lowered for kw in SQUADS[key]["domain_keywords"]):
-            return key
-    return "alpha"
+async def find_discussion_topic() -> str:
+    """Отдельный лёгкий вызов модели (не входит в группу), который
+    смотрит git log обоих репозиториев и формулирует один конкретный
+    вопрос для обсуждения командой."""
+    scout_client = get_chat_client(MODEL_ASSIGNMENTS["code_scout"])
 
-MAX_MESSAGES = 20  # достаточно для живой дискуссии, не разорительно
+    bld_system_log = git_log("bld-system", limit=15)
+    bld_panel_log = git_log("bld-panel", limit=15)
 
-ROLE_LABELS = {
-    "mekhmat":  "🔢 Мехмат",
-    "fiztech":  "⚙️  Физтех",
-    "fizmat":   "🎲 Физмат",
-    "tehmat":   "♟️  Техмат",
-    "chief_scientist": "🔭 Chief Scientist",
-    "secretary": "📋 Секретарь",
-}
-
-AGENDA_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
-
-AGENDA_SCOPE = """
-Про зону обсуждения: Совет директоров — в первую очередь техническое
-обсуждение по проекту BLD System (оба репозитория: bld-system и
-bld-panel) — архитектура, надёжность, anomaly detection engine,
-качество кода, технический долг, готовность к росту нагрузки.
-
-Тему выбираешь ты сам, свободно — глядя в реальный код, а не по
-шаблону. Если в процессе всплывает деловой угол (например: "это
-техническое решение упирается в то, что мы пока не знаем реальных
-объёмов данных от клиентов" или "эта надёжность системы важна именно
-потому что от неё зависит доверие первого клиента") — это нормально,
-можно затронуть, но по-настоящему деловые темы (продажи, цены,
-приоритеты между BLD/Хвилей/Нейробаристой, привлечение инвестиций)
-не должны становиться ГЛАВНОЙ темой заседания — для этого есть
-отдельный орган, Правление. Изредка такой угол уместен как часть
-технического разговора, но не как самоцель.
-"""
-
-
-async def find_agenda(cli_hint: str | None) -> str:
-    if cli_hint:
-        return cli_hint.strip()
-
-    recent_topics = load_recent_topics("board_topics.json")
-    recent_block = ""
-    if recent_topics:
-        recent_block = (
-            "\nПоследние темы прошлых заседаний (НЕ повторяй их и не бери "
-            "тот же угол — код между заседаниями мог не измениться, но "
-            "тема должна быть новой; если ничего нового не нашлось, копни "
-            "глубже в другую часть кода):\n"
-            + "\n".join(f"- {t}" for t in recent_topics)
-        )
-
-    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["agenda_setter"])
-    agenda_agent = client.as_agent(
-        name="agenda_setter",
-        instructions="Формулируешь техническую повестку для совета директоров на основе реального кода.",
-        tools=AGENDA_TOOLS,
-    )
     prompt = f"""
-{COMPANY_CONTEXT}
-{AGENDA_SCOPE}
-{recent_block}
+Вот последние коммиты в двух репозиториях проекта BLD System.
 
-Загляни в реальный код (git_log, grep_repo, read_file по bld-system и
-bld-panel), найди что-то конкретное, за что можно зацепиться, и сам
-сформулируй ОДИН острый вопрос для заседания совета — какой сочтёшь
-наиболее актуальным именно сейчас, глядя на реальное состояние кода.
-Не подгоняй под шаблон — тема должна родиться из того, что ты реально
-увидел в коде.
-Ответь ТОЛЬКО самим вопросом, без преамбулы и кавычек.
+=== bld-system ===
+{bld_system_log}
+
+=== bld-panel ===
+{bld_panel_log}
+
+Выбери ОДИН коммит или одно изменение, которое выглядит спорным,
+рискованным, недоделанным или интересным с архитектурной/продуктовой
+точки зрения. Сформулируй ОДНО конкретное предложение-вопрос для
+обсуждения командой (CTO, Backend Senior, Product/Frontend, QA/Security).
+
+Вопрос должен быть конкретным и привязанным к репозиторию и коммиту,
+например: "В bld-system, коммит abc123 меняет логику L7 — это
+осознанное решение или забытый edge-case? Нужно обсудить."
+
+Ответь ТОЛЬКО самим вопросом, без преамбулы.
 """
-    response = await agenda_agent.run(prompt)
-    topic = response.text.strip()
-    save_topic("board_topics.json", topic)
-    return topic
+    return await ask(scout_client, prompt)
 
 
-def build_board_workflow(board: dict):
-    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
-    secretary_agent = secretary_client.as_agent(
-        name="secretary",
+def build_discussion_workflow(team: dict):
+    """Собирает GroupChat workflow с модератором-агентом."""
+    moderator_client = get_chat_client(MODEL_ASSIGNMENTS["moderator"])
+    moderator_agent = moderator_client.as_agent(
+        name="moderator",
         instructions="""
-Ты — секретарь заседания совета директоров. У тебя нет своего мнения
-о стратегии, твоя задача — после каждого сообщения решать, кто из
-участников (mekhmat, fiztech, fizmat, tehmat) должен ответить следующим.
+Ты — модератор технического обсуждения. У тебя НЕТ своего мнения
+о проекте, твоя единственная задача — после каждого сообщения решать,
+кто из участников (cto, backend_senior, product_frontend, qa_security)
+должен ответить следующим.
 
 Правила выбора:
-- Если кого-то явно упомянули по имени/роли — выбирай его.
-- Если кто-то задал прямой вопрос — выбирай адресата.
-- Если прозвучало утверждение, которое противоречит складу мышления
-  другого участника (например: чистый расчёт без учёта реакции рынка,
-  или план без учёта ограничения по времени одного человека) — дай
-  ему слово, чтобы возразить.
-- Не давай одному участнику говорить три раза подряд без необходимости.
-- Если обсуждение пришло к согласию или четырём участникам нечего
-  больше добавить — заверши заседание.
+- Если кого-то явно упомянули по имени или роли — выбирай его.
+- Если кто-то задал прямой вопрос — выбирай того, к кому он адресован.
+- Если в последнем сообщении есть утверждение, которое противоречит
+  зоне ответственности другого участника — дай ему слово, чтобы он
+  мог возразить.
+- Не давай одному и тому же участнику говорить три раза подряд без
+  необходимости.
+- Если обсуждение явно пришло к согласию или зашло в тупик —
+  заверши разговор.
 """,
     )
 
     def stop_condition(messages: list[Message]) -> bool:
-        return len([m for m in messages if m.role == "assistant"]) >= MAX_MESSAGES
+        assistant_messages = [m for m in messages if m.role == "assistant"]
+        return len(assistant_messages) >= MAX_MESSAGES
 
     return (
         GroupChatBuilder(
-            participants=list(board.values()),
-            orchestrator_agent=secretary_agent,
+            participants=list(team.values()),
+            orchestrator_agent=moderator_agent,
             termination_condition=stop_condition,
         )
         .build()
     )
 
 
-async def compile_report(agenda: str, transcript: list[Message]) -> str:
-    """Составляет ПОЛНЫЙ отчёт с детальной стенограммой — кто что сказал,
-    а не сжатое резюме на 2 строки."""
-    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
-
-    lines = []
-    for m in transcript:
-        if m.role != "assistant":
-            continue
-        name = m.author_name or "unknown"
-        label = ROLE_LABELS.get(name, name.upper())
-        lines.append(f"{label}:\n{m.text.strip()}")
-    steno = "\n\n".join(lines)
-
-    now = datetime.now().strftime("%d.%m.%Y, %H:%M")
-
-    prompt = f"""
-Вопрос заседания: {agenda}
-Дата и время: {now}
-
-Реальная стенограмма заседания совета директоров:
-{steno}
-
-Составь ПОДРОБНЫЙ отчёт для Валика (без markdown-звёздочек, простой
-текст для Telegram, сообщение может быть разбито на части — не бойся
-объёма, детальность важнее краткости):
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-СОВЕТ ДИРЕКТОРОВ — {now}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ВОПРОС:
-[одна-две строки]
-
-ХОД ОБСУЖДЕНИЯ:
-[Это главная часть — реально по каждой значимой реплике: РОЛЬ — что
-именно сказал, какой аргумент привёл, с кем спорил и почему. Не сжимай
-в одну строку на человека — если Мехмат привёл конкретный формальный
-аргумент, опиши именно его; если Физтех возразил конкретной цифрой или
-ограничением — укажи какой. Сохраняй характер и резкость реплик, не
-сглаживай разногласия. Это должно читаться как реальный отчёт о
-дискуссии, а не как аннотация к ней.]
-
-ГДЕ СОШЛИСЬ / ГДЕ РАЗОШЛИСЬ:
-[Явно укажи: в чём было согласие, и в чём остался нерешённый спор
-(если остался) — не делай вид, что все обязательно пришли к консенсусу.
-ВАЖНО: если Chief Scientist выразил фундаментальные сомнения в самой
-постановке задачи (а не просто в деталях реализации) — это должно быть
-явно и заметно здесь, а не потеряно среди прочих реплик. Его роль
-именно в том, чтобы ловить "решаем не ту задачу" — если он это сказал,
-Валик должен это увидеть отчётливо, даже если остальные не согласны.]
-
-РЕКОМЕНДАЦИЯ:
-[итоговая рекомендация, 2-4 строки, конкретно]
-
-СЛЕДУЮЩИЙ ШАГ:
-[один конкретный, выполнимый одним человеком за разумный срок шаг]
-
-Пиши по-русски, детально и конкретно — Валик должен реально понимать,
-кто что говорил и почему, а не только итог.
-"""
-    return await ask(secretary_client, prompt)
-
-
 async def main():
-    cli_hint = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else None
-
     print("Синхронизация репозиториев...")
     if not await sync_repos_or_alert():
         return
 
-    print("Формулируем повестку заседания...")
-    agenda = await find_agenda(cli_hint)
-    print(f"\nПовестка:\n{agenda}\n")
+    print("\nИщем повод для дискуссии в git log...")
+    topic = await find_discussion_topic()
+    print(f"\nТема дискуссии:\n{topic}\n")
     print("=" * 80)
 
-    board = build_board()
-    workflow = build_board_workflow(board)
+    team = build_team()
+    workflow = build_discussion_workflow(team)
 
     try:
-        result = await workflow.run(agenda)
-        transcript = extract_messages(result.get_outputs())
-        assistant_messages = [m for m in transcript if m.role == "assistant"]
+        result = await workflow.run(topic)
+        messages = extract_messages(result.get_outputs())
     except Exception as e:
         print(f"GroupChat упал с ошибкой (известный edge-case библиотеки agent_framework): {e}")
-        transcript = []
-        assistant_messages = []
-
-    if not assistant_messages:
-        alert = (
-            "⚠️ ОБСУЖДЕНИЕ НЕ СОСТОЯЛОСЬ (баг оркестрации GroupChat), "
-            "но тема конкретная — передаём её напрямую в инженерную работу, "
-            "минуя протокол заседания.\n\n"
-            f"Тема: {agenda}"
-        )
-        print(alert)
-        send_telegram_report(alert)
-
-        # Тема уже сформулирована agenda_setter'ом с реальным доступом к
-        # коду — она сама по себе достаточно конкретна, чтобы стать
-        # инженерной задачей, даже если групповое обсуждение не удалось.
-        # Не выбрасываем хорошую тему только из-за сбоя в discussion-слое.
-        if task_spans_both_domains(agenda):
-            print("Тема затрагивает обе зоны — отряды работают эстафетой...")
-            relay_report = await run_squad_relay(agenda)
-            brief = await compile_brief(relay_report)
-            send_telegram_report(brief)
-            await curate_knowledge("Совет директоров (без обсуждения) / Эстафета", relay_report)
-        else:
-            target_squad = assign_task_to_squad(agenda)
-            print(f"Тема уходит напрямую в {SQUADS[target_squad]['label']}...")
-            squad_reports = await dispatch_squads({target_squad: agenda})
-            for squad_report in squad_reports:
-                brief = await compile_brief(squad_report)
-                send_telegram_report(brief)
-                await curate_knowledge("Совет директоров (без обсуждения) / Инженерный отряд", squad_report)
+        print("Дискуссия не состоялась в этот раз.")
         return
 
-    for msg in transcript:
+    print("\n" + "=" * 80)
+    print("ХОД ДИСКУССИИ:\n")
+    for msg in messages:
         if msg.role == "assistant":
-            label = ROLE_LABELS.get(msg.author_name or "", msg.author_name or "system")
-            print(f"\n{label}: {msg.text}")
+            print(f"\n[{msg.author_name or 'system'}]: {msg.text}")
 
     print("\n" + "=" * 80)
-    print("Готовим отчёт...")
-    report = await compile_report(agenda, transcript)
-
-    print("\n" + "=" * 80)
-    print("ОТЧЁТ:\n")
-    print(report)
-
-    send_telegram_report(report)
-
-    # Инженерная команда реально пишет и коммитит код по "следующему
-    # шагу" — в отдельную ветку, Валик сам ревьюит и мержит.
-    print("\n" + "=" * 80)
-    print("Определяем задачу для инженерной команды...")
-    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
-    task = await extract_next_step(report, secretary_client)
-    print(f"Задача: {task}")
-
-    if looks_like_meta_complaint(task):
-        alert = (
-            "⚠️ ЗАДАЧА ДЛЯ ИНЖЕНЕРНОЙ КОМАНДЫ ВЫГЛЯДИТ НЕОСМЫСЛЕННОЙ — пропущена\n\n"
-            f"Извлечённый 'следующий шаг': {task}\n\n"
-            "Похоже на жалобу модели на нехватку данных, а не на реальную "
-            "задачу (например, отчёт заседания получился пустым/битым). "
-            "Инженерная команда НЕ запущена — реализовывать тут нечего."
-        )
-        print(alert)
-        send_telegram_report(alert)
-        return
-
-    if task_spans_both_domains(task):
-        print("Задача затрагивает обе зоны — отряды работают эстафетой на одной ветке...")
-        relay_report = await run_squad_relay(task)
-        print(f"\n{relay_report}")
-        send_telegram_report(relay_report)
-        await curate_knowledge("Совет директоров / Эстафета отрядов", report + "\n\n" + relay_report)
-    else:
-        target_squad = assign_task_to_squad(task)
-        other_squad = "bravo" if target_squad == "alpha" else "alpha"
-
-        # Ротация: чтобы простаивающий отряд не искал себе левую задачу
-        # каждый раз (это и создавало риск постоянного шума от
-        # несвязанных параллельных веток) — только через раз.
-        turn = load_rotation_turn("squad_idle_rotation")
-        if turn == 0:
-            print(f"Задача уходит в {SQUADS[target_squad]['label']}; "
-                  f"по ротации {SQUADS[other_squad]['label']} тоже ищет себе задачу...")
-            tasks_by_squad = {target_squad: task, other_squad: None}
-        else:
-            print(f"Задача уходит только в {SQUADS[target_squad]['label']}; "
-                  f"{SQUADS[other_squad]['label']} отдыхает этот цикл (ротация)...")
-            tasks_by_squad = {target_squad: task}
-        save_rotation_turn("squad_idle_rotation", 1 - turn)
-
-        squad_reports = await dispatch_squads(tasks_by_squad)
-
-        for squad_report in squad_reports:
-            print(f"\n{squad_report}")
-            send_telegram_report(squad_report)
-            await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + squad_report)
+    print("Готово.")
 
 
 if __name__ == "__main__":
