@@ -9,3 +9,8 @@
 - Решение/находка: В `bld-system/core/owner_activation.py` убран небезопасный fallback `http://localhost:{PORT}` и добавлена fail-closed валидация `OWNER_ACTIVATION_BASE_URL`/`RENDER_EXTERNAL_URL`.
 - Причина: Чтобы в staging/production нельзя было сгенерировать activation-ссылки на localhost/HTTP/non-public hosts и избежать нерабочих или небезопасных customer-facing ссылок.
 - Открытый вопрос/риск: Не покрыт кейс IPv6 link-local с zone ID (`%eth0`/`%lo0`) и валидация наличия корректного path в `OWNER_ACTIVATION_BASE_URL` (может генерировать ссылки с неверным путём).
+
+### Инициатива: 🗄️  Database Engineer — 08.07.2026 17:05
+- Решение/находка: В `anomaly/decision_snapshot_service.py` в `_apply_candidate_state()` заменён статус `pending_review` на `open`, а в `services/anomaly_feedback_service.py` удалена мёртвая константа `CANDIDATE_STATUS_PENDING_REVIEW`.
+- Причина: Устранена неконсистентность между кодом и допустимыми/семантическими статусами кандидата, чтобы повторные запуски писали валидный и согласованный `status`.
+- Открытый вопрос/риск: `AnomalyCandidate.status` в `database/models.py` по-прежнему имеет `default/server_default="pending_review"` — нужен отдельный follow-up по унификации статусного контракта (и проверка конкурентных обновлений).
