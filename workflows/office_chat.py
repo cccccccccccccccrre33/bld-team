@@ -165,8 +165,18 @@ async def main():
     team = build_office_chat_team()
     workflow = build_chat_workflow(team)
 
-    result = await workflow.run(spark_line)
-    transcript = extract_messages(result.get_outputs())
+    try:
+        result = await workflow.run(spark_line)
+        transcript = extract_messages(result.get_outputs())
+    except Exception as e:
+        print(f"GroupChat упал с ошибкой (известный edge-case библиотеки agent_framework): {e}")
+        alert = f"⚠️ Офисный чат не состоялся из-за сбоя оркестрации.\n\nЗатравка была: {spark_line}"
+        send_telegram_report(alert)
+        return
+
+    if not any(m.role == "assistant" for m in transcript):
+        print("Чат не дал реплик — пропускаем без отчёта (это просто болтовня, не критично).")
+        return
 
     for msg in transcript:
         if msg.role == "assistant":
