@@ -21,7 +21,6 @@ junior-фиксы не требуют senior sign-off). Порог "мелкая
 """
 
 from agents.team import build_team
-from workflows._common import ask
 from workflows.task_board import get_board_summary
 
 
@@ -76,8 +75,8 @@ PROPOSAL от {squad_label}:
 КОММЕНТАРИЙ: [2-3 конкретных предложения — почему да или почему нет,
 без воды. Если REJECT — что именно не так и стоит ли переформулировать.]
 """
-    response = await ask(cto, prompt)
-    text = response.strip()
+    response = await cto.run(prompt)
+    text = response.text.strip()
 
     approved = "РЕШЕНИЕ: APPROVE" in text.upper()
     # Извлекаем комментарий
