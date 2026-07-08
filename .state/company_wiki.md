@@ -14,3 +14,8 @@
 - Решение/находка: В `anomaly/decision_snapshot_service.py` в `_apply_candidate_state()` заменён статус `pending_review` на `open`, а в `services/anomaly_feedback_service.py` удалена мёртвая константа `CANDIDATE_STATUS_PENDING_REVIEW`.
 - Причина: Устранена неконсистентность между кодом и допустимыми/семантическими статусами кандидата, чтобы повторные запуски писали валидный и согласованный `status`.
 - Открытый вопрос/риск: `AnomalyCandidate.status` в `database/models.py` по-прежнему имеет `default/server_default="pending_review"` — нужен отдельный follow-up по унификации статусного контракта (и проверка конкурентных обновлений).
+
+### Инициатива: 🅱️  Отряд Браво (Надёжность и безопасность) — 08.07.2026 17:59
+- Решение/находка: Добавлена fail-fast CORS-политика, запрещающая loopback/`localhost` и wildcard в non-dev, и обновлены `env.example`/тесты под запрет `http://localhost:*`.
+- Причина: Review Gate указал, что логика не должна существовать как «отдельный helper» без вшивания в единый startup contract/settings-layer, иначе защита может не сработать в `production`.
+- Открытый вопрос/риск: Нужно гарантировать реальное wiring в `Settings.assert_startup_contract()`/валидатор старта (не через тесты/реестры), иначе приложение может не падать на старте при небезопасных `CORS_ORIGINS`.
