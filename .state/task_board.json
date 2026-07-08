@@ -14,12 +14,12 @@
       "id": "bravo-20260708092651",
       "title": "В `bld-system/core/owner_activation.py` убрать небезопасный дефолт `http://localhost:{PORT}` для OWNER_ACTIVATION_BASE_URL (не допускать генерацию activation-ссылок на localhost/HTTP вне dev)",
       "squad": "bravo",
-      "status": "in_progress",
+      "status": "done",
       "reason": "Сейчас при пустом `OWNER_ACTIVATION_BASE_URL` код генерирует ссылки вида `http://localhost:{PORT}`, что опасно: в misconfig окружении такие ссылки могут уйти реальным пользователям, сломав активацию и создавая риск утечки/подмены через не-TLS URL. Это также усложняет мониторинг инцидентов (трудно отличить dev от prod по поведению).",
       "how": "Изменить `get_owner_activation_base_url()` так, чтобы дефолт `http://localhost:{PORT}` использовался только при явном `environment=development` (или аналогичном флаге), а во всех остальных окружениях — выбрасывалась ошибка/логировался критический конфиг. Добавить тест, который гарантирует: в production/staging без `OWNER_ACTIVATION_BASE_URL` функция падает, а в development — возвращает localhost.",
       "created": "08.07.2026 09:26",
       "cto_comment": "Проверил код: `core/owner_activation.py` сейчас действительно отдаёт `http://localhost:{PORT}` для любого окружения, кроме `production`, то есть staging/misconfig легко получит битые customer-facing activation-ссылки. Дубля в работе нет — это ровно задача из pending approval, в вики такого решения не зафиксировано. Чинить просто: использовать уже существующий `settings.ENVIRONMENT`, разрешить localhost только для `development`, а в staging/production падать тестируемой ошибкой; новый флаг не городить."
     }
   ],
-  "last_updated": "08.07.2026 09:27"
+  "last_updated": "08.07.2026 09:40"
 }
