@@ -23,6 +23,7 @@ from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
 from workflows._common import (
     ask,
+    compile_brief,
     curate_knowledge,
     extract_messages,
     extract_next_step,
@@ -233,20 +234,43 @@ async def main():
     board = build_board()
     workflow = build_board_workflow(board)
 
-    result = await workflow.run(agenda)
-    transcript = extract_messages(result.get_outputs())
-    assistant_messages = [m for m in transcript if m.role == "assistant"]
+    try:
+        result = await workflow.run(agenda)
+        transcript = extract_messages(result.get_outputs())
+        assistant_messages = [m for m in transcript if m.role == "assistant"]
+    except Exception as e:
+        print(f"GroupChat упал с ошибкой (известный edge-case библиотеки agent_framework): {e}")
+        transcript = []
+        assistant_messages = []
 
     if not assistant_messages:
         alert = (
-            "⚠️ ЗАСЕДАНИЕ НЕ ДАЛО РЕПЛИК — сессия отменена\n\n"
-            f"Тема: {agenda}\n\n"
-            "GroupChat вернул пустую стенограмму (0 сообщений участников). "
-            "Дальше по пайплайну идти нет смысла — отчёт и инженерная задача "
-            "не запускаются. Следующее заседание пройдёт по расписанию как обычно."
+            "⚠️ ОБСУЖДЕНИЕ НЕ СОСТОЯЛОСЬ (баг оркестрации GroupChat), "
+            "но тема конкретная — передаём её напрямую в инженерную работу, "
+            "минуя протокол заседания.\n\n"
+            f"Тема: {agenda}"
         )
         print(alert)
         send_telegram_report(alert)
+
+        # Тема уже сформулирована agenda_setter'ом с реальным доступом к
+        # коду — она сама по себе достаточно конкретна, чтобы стать
+        # инженерной задачей, даже если групповое обсуждение не удалось.
+        # Не выбрасываем хорошую тему только из-за сбоя в discussion-слое.
+        if task_spans_both_domains(agenda):
+            print("Тема затрагивает обе зоны — отряды работают эстафетой...")
+            relay_report = await run_squad_relay(agenda)
+            brief = await compile_brief(relay_report)
+            send_telegram_report(brief)
+            await curate_knowledge("Совет директоров (без обсуждения) / Эстафета", relay_report)
+        else:
+            target_squad = assign_task_to_squad(agenda)
+            print(f"Тема уходит напрямую в {SQUADS[target_squad]['label']}...")
+            squad_reports = await dispatch_squads({target_squad: agenda})
+            for squad_report in squad_reports:
+                brief = await compile_brief(squad_report)
+                send_telegram_report(brief)
+                await curate_knowledge("Совет директоров (без обсуждения) / Инженерный отряд", squad_report)
         return
 
     for msg in transcript:
