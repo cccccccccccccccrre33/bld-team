@@ -155,19 +155,29 @@ async def main():
     board = build_executive_board()
     workflow = build_executive_workflow(board)
 
-    result = await workflow.run(agenda)
-    transcript = extract_messages(result.get_outputs())
-    assistant_messages = [m for m in transcript if m.role == "assistant"]
+    try:
+        result = await workflow.run(agenda)
+        transcript = extract_messages(result.get_outputs())
+        assistant_messages = [m for m in transcript if m.role == "assistant"]
+    except Exception as e:
+        print(f"GroupChat упал с ошибкой (известный edge-case библиотеки agent_framework): {e}")
+        transcript = []
+        assistant_messages = []
 
     if not assistant_messages:
         alert = (
-            "⚠️ ЗАСЕДАНИЕ ПРАВЛЕНИЯ НЕ ДАЛО РЕПЛИК — сессия отменена\n\n"
-            f"Тема: {agenda}\n\n"
-            "GroupChat вернул пустую стенограмму. Дальше по пайплайну идти "
-            "нет смысла — отчёт и задача сотруднику не запускаются."
+            "⚠️ ОБСУЖДЕНИЕ ПРАВЛЕНИЯ НЕ СОСТОЯЛОСЬ, но тема конкретная — "
+            "передаём задачу напрямую сотруднику, минуя протокол заседания.\n\n"
+            f"Тема: {agenda}"
         )
         print(alert)
         send_telegram_report(alert)
+
+        findings = await dispatch_worker(agenda, EXEC_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
+        worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ (без обсуждения):\n{agenda}\n\n{findings}"
+        print(f"\n{worker_message}")
+        send_telegram_report(worker_message)
+        await curate_knowledge("Правление (без обсуждения)", worker_message)
         return
 
     for msg in transcript:
