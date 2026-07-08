@@ -24,11 +24,11 @@
       "id": "bravo-20260708141021",
       "title": "В `bld-panel/vite.config.js` убрать небезопасный дефолт dev-прокси `target: 'http://localhost:8000'` и запретить HTTP/localhost в non-dev окружениях",
       "squad": "bravo",
-      "status": "proposed",
+      "status": "rejected",
       "reason": "Сейчас при отсутствии `VITE_DEV_PROXY_TARGET` фронтенд по умолчанию проксирует API на `http://localhost:8000`, что может привести к случайным деплоям/прогонам (preview/CI) с запросами в localhost по HTTP. Это риск SSRF/ошибочного маршрутизации и источник трудноотлавливаемых сбоев, если конфиг окружения не задан строго.",
       "how": "Сделать `VITE_DEV_PROXY_TARGET` обязательным для режима `development`, а в `preview/production` полностью отключать dev-proxy. Добавить валидацию: запрещать `http://` и `localhost/127.0.0.1` вне dev, при нарушении — падать с явной ошибкой сборки/старта.",
       "created": "08.07.2026 14:10",
-      "cto_comment": ""
+      "cto_comment": "В `vite.config.js` этот `target: env.VITE_DEV_PROXY_TARGET || 'http://localhost:8000'` находится в `server.proxy`, то есть это Vite dev-server конфиг, а не production routing; формулировка про SSRF/случайный prod-деплой выглядит раздутой. Переформулировать задачу стоит так: отключить/не объявлять proxy вне `mode === 'development'` и добавить явную ошибку, если dev-proxy почему-то включён в non-dev, но не делать `VITE_DEV_PROXY_TARGET` обязательным для локальной разработки — localhost в dev нормален."
     }
   ],
   "last_updated": "08.07.2026 14:10"
