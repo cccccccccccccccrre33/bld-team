@@ -18,7 +18,7 @@ from agents.squads import build_squad_lead_alpha, build_squad_lead_bravo
 from agents.team import build_team
 
 CODE_ACCESS_ROLES = {
-    "mekhmat", "fiztech", "fizmat", "tehmat", "chief_scientist",
+    "mekhmat", "fiztech", "fizmat", "tehmat", "chief_scientist", "ceo",
     "cto", "backend_senior", "product_frontend", "qa_security",
     "mit", "caltech", "stanford", "cmu", "tsinghua", "pku", "ustc", "eth", "kaist",
     "database_engineer", "performance_engineer", "security_engineer", "reliability_engineer",
