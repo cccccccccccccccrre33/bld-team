@@ -14,7 +14,11 @@ import re
 import sys
 from datetime import datetime
 
+from agents.architecture_council import ARCHITECT_LABELS
+from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
 from agents.engineering import build_lead_engineer, build_specialist_pool
+from agents.expansion_geniuses import GLOBAL_LABELS as EXPANSION_LABELS
+from agents.expansion_geniuses import SPECIALTY_KEYWORDS as EXPANSION_KEYWORDS
 from agents.global_geniuses import GLOBAL_LABELS
 from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
 from agents.growth_team import GROWTH_LABELS
@@ -22,14 +26,14 @@ from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
 from agents.review_gate import run_review_gate
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
-from config.models import BOARD_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
+from config.models import BOARD_MODEL_ASSIGNMENTS, EXPANSION_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
 from tools.repo_tools import commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
 from workflows._common import compile_brief, curate_knowledge, sync_repos_or_alert
 
-ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS}
-ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS}
-ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS}
+ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS}
+ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
+ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS, **EXPANSION_MODEL_ASSIGNMENTS}
 
 # Ключевые слова, по которым понимаем, что лид явно попросил помощи —
 # простая эвристика, не идеальная, но рабочая без сложного парсинга
