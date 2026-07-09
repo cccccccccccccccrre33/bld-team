@@ -62,7 +62,12 @@ PROPOSAL от {squad_label}:
 Почему важно: {reason}
 Как планируют чинить: {how}
 
-Твоя задача — дать конкретный ответ: одобрить или отклонить.
+Твоя задача — дать конкретный ответ: одобрить, отклонить, или —
+если вопрос выходит за рамки твоей уверенности (задевает
+фундаментальную архитектуру, стратегическое направление, или ты
+реально не уверен) — эскалировать к CEO. Не эскалируй по умолчанию,
+только когда реально не уверен сам, это не способ переложить
+ответственность на каждую задачу.
 Смотри на:
 1. Не делает ли другой отряд то же самое прямо сейчас (task board)?
 2. Не решалось ли это уже (вики)?
@@ -71,19 +76,51 @@ PROPOSAL от {squad_label}:
 4. Реалистично ли "как планируют чинить" — нет ли там переусложнения?
 
 Ответь строго в формате:
-РЕШЕНИЕ: APPROVE или REJECT
-КОММЕНТАРИЙ: [2-3 конкретных предложения — почему да или почему нет,
-без воды. Если REJECT — что именно не так и стоит ли переформулировать.]
+РЕШЕНИЕ: APPROVE или REJECT или ESCALATE
+КОММЕНТАРИЙ: [2-3 конкретных предложения — почему да, почему нет, или
+почему эскалируешь, без воды.]
 """
     response = await cto.run(prompt)
     text = response.text.strip()
+    decision_upper = text.upper()
 
-    approved = "РЕШЕНИЕ: APPROVE" in text.upper()
-    # Извлекаем комментарий
     comment = text
     for line in text.split("\n"):
         if line.upper().startswith("КОММЕНТАРИЙ:"):
             comment = line.split(":", 1)[-1].strip()
             break
 
+    if "РЕШЕНИЕ: ESCALATE" in decision_upper:
+        print(f"[{squad_label}] CTO не уверен — эскалируем к CEO...")
+        from agents.ceo import build_ceo
+
+        ceo = build_ceo()
+        ceo_prompt = f"""
+CTO не уверен по вопросу от {squad_label} и передал тебе финальное слово.
+
+Комментарий CTO: {comment}
+
+PROPOSAL от {squad_label}:
+Задача: {task_title}
+Почему важно: {reason}
+Как планируют чинить: {how}
+
+Дай финальный вердикт — коротко, по существу, без пересказа того, что
+уже сказал CTO.
+
+Ответь строго в формате:
+РЕШЕНИЕ: APPROVE или REJECT
+КОММЕНТАРИЙ: [1-2 предложения]
+"""
+        ceo_response = await ceo.run(ceo_prompt)
+        ceo_text = ceo_response.text.strip()
+        approved = "РЕШЕНИЕ: APPROVE" in ceo_text.upper()
+        ceo_comment = ceo_text
+        for line in ceo_text.split("\n"):
+            if line.upper().startswith("КОММЕНТАРИЙ:"):
+                ceo_comment = line.split(":", 1)[-1].strip()
+                break
+        return approved, f"👑 CEO (эскалация от CTO): {ceo_comment}"
+
+    approved = "РЕШЕНИЕ: APPROVE" in decision_upper
     return approved, comment
