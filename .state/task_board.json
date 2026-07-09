@@ -59,7 +59,17 @@
       "how": "1) Спроектировать отдельную analytics-схему с partitioned tables / materialized views для daily/weekly aggregates по tenant/project/anomaly_level + time-series индексы; 2) Добавить lightweight ETL job (через worker) для инкрементальной материализации метрик из operational таблиц; 3) Задокументировать контракт и retention policy, чтобы internal anomaly signals не протекали в owner-visible слой.",
       "created": "09.07.2026 10:05",
       "cto_comment": ""
+    },
+    {
+      "id": "bravo-20260709175812",
+      "title": "Удалить мёртвый/небезопасный fallback `http://localhost:{PORT}` из `bld-system/core/owner_activation.py` (сейчас он всё ещё возвращается в `return f\"http://localhost:{port}\"`)",
+      "squad": "bravo",
+      "status": "proposed",
+      "reason": "В коде остаётся прямой генератор HTTP/localhost activation base URL, что создаёт риск выпуска activation-ссылок на loopback/по HTTP при ошибочной конфигурации или обходе валидации. Это также ломает надёжность флоу активации в окружениях без доступного localhost.",
+      "how": "Удалить fallback на localhost и сделать базовый URL обязательным (ошибка старта приложения, если не задан/невалиден) для non-dev; в dev оставить явный флаг/ENVIRONMENT=development. Добавить тест, что в production/staging попытка получить base URL без явного значения приводит к исключению, а не к `http://localhost:*`.",
+      "created": "09.07.2026 17:58",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "09.07.2026 10:17"
+  "last_updated": "09.07.2026 17:58"
 }
