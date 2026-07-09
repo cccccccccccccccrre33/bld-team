@@ -54,7 +54,7 @@
       "id": "data_platform_architect-20260709100552",
       "title": "Отсутствует аналитический слой/агрегаты для хранения и запросов исторических данных anomaly engine (anomaly_metric_snapshots, anomaly_decision_snapshots, anomaly_rule_results и т.п. накапливаются только в operational Postgres с RLS).",
       "squad": "data_platform_architect",
-      "status": "self_approved",
+      "status": "in_progress",
       "reason": "Таблицы растут как immutable snapshots и raw events без партиционирования по времени/проекту, без materialized aggregates по трендам отклонений, без отдельной аналитической схемы или выгрузки — это прямой антипаттерн, который я видел в проде на Databricks/Snowflake при масштабе >10k событий/день. В итоге будущие аналитики (тренды по уровням 1-9, per-tenant risk distribution, drift detection) будут либо тормозить на row-level joins, либо требовать дорогостоящий рефакторинг.",
       "how": "1) Спроектировать отдельную analytics-схему с partitioned tables / materialized views для daily/weekly aggregates по tenant/project/anomaly_level + time-series индексы; 2) Добавить lightweight ETL job (через worker) для инкрементальной материализации метрик из operational таблиц; 3) Задокументировать контракт и retention policy, чтобы internal anomaly signals не протекали в owner-visible слой.",
       "created": "09.07.2026 10:05",
