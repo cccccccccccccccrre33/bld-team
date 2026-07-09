@@ -191,3 +191,32 @@ GROWTH_MODEL_ASSIGNMENTS = {
     "product_designer": _env("MODEL_PRODUCT_DESIGNER", "gpt-5.4-mini"),
     "engineering_mentor": _env("MODEL_ENGINEERING_MENTOR", "gpt-5.4-mini"),
 }
+
+# --- Экспансия (agents/expansion_geniuses.py, agents/architecture_council.py) ---
+# 10 молодых (новые вузы) + 10 сеньоров-архитекторов (топ-вуз + топ-карьера
+# в FAANG/Anthropic/Palantir/Netflix/Databricks и т.п.). Модели специально
+# раскиданы по ВСЕМ доступным провайдерам (не только gpt-*), для разнообразия.
+EXPANSION_MODEL_ASSIGNMENTS = {
+    # --- молодые ---
+    "technion": _env("MODEL_TECHNION", "DeepSeek-V4-Pro"),
+    "polytechnique": _env("MODEL_POLYTECHNIQUE", "gpt-5.4"),
+    "utokyo": _env("MODEL_UTOKYO", "gpt-5.4-nano"),
+    "berkeley_mlinfra": _env("MODEL_BERKELEY_MLINFRA", "Mistral-Large-3"),
+    "toronto": _env("MODEL_TORONTO", "gpt-5.4-mini"),
+    "itmo": _env("MODEL_ITMO", "Kimi-K2.7-Code"),
+    "oxford": _env("MODEL_OXFORD", "gpt-5.2"),
+    "iit_bombay": _env("MODEL_IIT_BOMBAY", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "nus": _env("MODEL_NUS", "gpt-5.4-mini"),
+    "waterloo_prod": _env("MODEL_WATERLOO_PROD", "DeepSeek-V4-Flash"),
+    # --- сеньоры-архитекторы ---
+    "embedded_reliability_architect": _env("MODEL_EMBEDDED_RELIABILITY_ARCHITECT", "gpt-5.4-mini"),
+    "data_integrity_architect": _env("MODEL_DATA_INTEGRITY_ARCHITECT", "gpt-5.4"),
+    "data_platform_architect": _env("MODEL_DATA_PLATFORM_ARCHITECT", "grok-4.3"),
+    "llm_systems_architect": _env("MODEL_LLM_SYSTEMS_ARCHITECT", "gpt-5.4"),
+    "chief_security_architect": _env("MODEL_CHIEF_SECURITY_ARCHITECT", "gpt-5.5"),
+    "platform_as_code_architect": _env("MODEL_PLATFORM_AS_CODE_ARCHITECT", "Mistral-Large-3"),
+    "realtime_systems_architect": _env("MODEL_REALTIME_SYSTEMS_ARCHITECT", "gpt-5.4-mini"),
+    "distributed_consensus_architect": _env("MODEL_DISTRIBUTED_CONSENSUS_ARCHITECT", "DeepSeek-V4-Pro"),
+    "resilience_chaos_architect": _env("MODEL_RESILIENCE_CHAOS_ARCHITECT", "grok-4.3"),
+    "bayesian_architect": _env("MODEL_BAYESIAN_ARCHITECT", "gpt-5.4"),
+}
