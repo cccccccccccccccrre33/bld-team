@@ -1,0 +1,49 @@
+name: Chevruta
+
+on:
+  schedule:
+    # 2 раза в день — 11:00 и 21:00 Киев (8,18 UTC). Свободное время
+    # для мысли, не завязанное на рабочий ритм остальных workflow.
+    - cron: '0 8,18 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  chevruta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Sync repos (read-only context for discussion)
+        env:
+          GITHUB_TOKEN: ${{ secrets.BLD_REPOS_PAT }}
+        run: |
+          python -c "
+          from tools.repo_tools import clone_or_update_repos
+          print(clone_or_update_repos())
+          "
+
+      - name: Run Chevruta
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main_chevruta.py
