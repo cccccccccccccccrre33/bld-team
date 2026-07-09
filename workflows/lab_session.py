@@ -36,7 +36,7 @@ MAX_TURNS = 10  # раунды разговора в паре/тройке — �
 
 ROLE_LABELS = {
     "mekhmat": "🔢 Мехмат", "fiztech": "⚙️  Физтех",
-    "fizmat": "🎲 Физмат", "tehmat": "♟️  Техмат", "chief_scientist": "🔭 Chief Scientist",
+    "fizmat": "🎲 Физмат", "tehmat": "♟️  Техмат", "chief_scientist": "🔭 Chief Scientist", "ceo": "👑 CEO",
     "cto": "🧑‍💼 CTO", "backend_senior": "⌨️  Backend",
     "product_frontend": "🎨 Product/Frontend", "qa_security": "🔒 QA/Security",
     "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR", "vp_engineering": "📐 VP Engineering", "squad_lead_alpha": "🅰️  Squad Lead Alpha", "squad_lead_bravo": "🅱️  Squad Lead Bravo",
