@@ -17,6 +17,8 @@ import asyncio
 import random
 import sys
 
+from agents.architecture_council import ARCHITECT_BUILDERS, ARCHITECT_LABELS
+from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS, GLOBAL_LABELS as EXPANSION_LABELS
 from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
@@ -27,8 +29,8 @@ from workflows.cto_approval import cto_approval
 from workflows.engineering_task import run_engineering_task
 from workflows.task_board import add_task, can_take_more, get_board_summary, is_duplicate, update_task_status
 
-ALL_BUILDERS = {**GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS}
-ALL_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS}
+ALL_BUILDERS = {**GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS, **ARCHITECT_BUILDERS}
+ALL_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
 
 
 async def scout_and_propose(name: str) -> dict | None:
