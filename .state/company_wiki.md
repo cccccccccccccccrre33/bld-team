@@ -19,3 +19,8 @@
 - Решение/находка: Добавлена fail-fast CORS-политика, запрещающая loopback/`localhost` и wildcard в non-dev, и обновлены `env.example`/тесты под запрет `http://localhost:*`.
 - Причина: Review Gate указал, что логика не должна существовать как «отдельный helper» без вшивания в единый startup contract/settings-layer, иначе защита может не сработать в `production`.
 - Открытый вопрос/риск: Нужно гарантировать реальное wiring в `Settings.assert_startup_contract()`/валидатор старта (не через тесты/реестры), иначе приложение может не падать на старте при небезопасных `CORS_ORIGINS`.
+
+### Инициатива: 📊 Data Platform Architect — 09.07.2026 10:17
+- Решение/находка: Запланировано разнесение anomaly исторических данных на operational (RLS, runtime) и analytical слой (агрегации без RLS) с отдельным pipeline/retention вместо heavy-query по operational таблицам.  
+- Причина: OLTP Postgres с RLS деградирует на time-series/агрегациях и провоцирует рост техдолга при накоплении snapshot/rule_result истории.  
+- Открытый вопрос/риск: В реализации требуется полноценная интеграция (worker/pipeline с upsert-idempotency, индексы, тесты, retention enforcement) — DDL-скелет без наполняющего кода не закрывает риск.
