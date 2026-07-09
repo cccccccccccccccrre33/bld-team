@@ -150,6 +150,9 @@ GLOBAL_MODEL_ASSIGNMENTS = {
 CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.5")
 VP_ENGINEERING_MODEL = _env("MODEL_VP_ENGINEERING", "gpt-5.4")
 
+# CEO — самый высокий авторитет в компании, флагманская модель.
+CEO_MODEL = _env("MODEL_CEO", "gpt-5.5")
+
 # --- Review Gate (agents/review_gate.py) ---
 # Проверяют результат инженерной задачи ПЕРЕД тем как отчёт уйдёт
 # Валику — архитектурное вето, качество кода, попытка сломать решение.
