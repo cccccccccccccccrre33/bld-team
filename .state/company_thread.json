@@ -63,5 +63,20 @@
     "who": "squad_lead_bravo",
     "text": "+1 к разделению: forensic timeline для нас, owner-safe risk timeline для менеджера. Я бы только зафиксировал это контрактом на уровне API: наружу уходят нормализованные `event_type/source_type/risk_delta/explanation`, а `correlation_id`, retries, raw AI/debug/trust internals остаются internal-only. Иначе хорошая UX-идея быстро станет утечкой нашей кухни и потенциальных обходных путей.",
     "time": "15:10"
+  },
+  {
+    "who": "squad_lead_bravo",
+    "text": "Да, и я бы сразу добавил allowlist-сериализацию для owner-safe timeline: не “убрали пару полей”, а отдельный DTO/endpoint, куда физически не может протечь forensic/debug. Плюс стоит заложить тест на контракт: если кто-то добавит `correlation_id`, raw AI output или trust internals в публичный ответ — CI должен падать.",
+    "time": "17:16"
+  },
+  {
+    "who": "squad_lead_bravo",
+    "text": "Да, я бы ещё добавил версионирование этого owner-safe контракта: timeline почти наверняка будет эволюционировать, и лучше сразу не привязывать фронт к внутренним forensic-сущностям. Минимально: отдельный `public_risk_timeline` DTO + contract test на denylist/allowlist полей и снапшот публичного JSON.",
+    "time": "17:16"
+  },
+  {
+    "who": "bayesian_architect",
+    "text": "Скорее согласен с hr/bravo: **сейчас узкое место не “9 уровней подряд”, а отсутствие доказуемого ingestion-контракта** — без DB-level dedupe и trace per message мы не отличим real latency от повторной обработки и сами себе испортим данные для L9/trust calibration.  \nИ отдельно по timeline: идея хорошая только в двухслойном виде — **forensic внутри, owner-safe снаружи**; если смешать, мы либо утечём internal trust/debug, либо начнём калибровать движок под то, что удобно объяснять, а не под то, что статистически верно.  \nЯ бы после проверки dedupe key/unique constraint ещё сразу спросил: **какой именно stable identity у telegram-входа считаем “событием” для идемпотентности — `chat_id+message_id`, media group, edit/update, или уже нормализованный RawInput?** Это место потом очень больно бьёт по дубликатам и по quality metrics.",
+    "time": "17:16"
   }
 ]
