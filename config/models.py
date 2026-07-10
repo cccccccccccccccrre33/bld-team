@@ -176,6 +176,10 @@ SPECIALIST_MODEL_ASSIGNMENTS = {
 # Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
 KNOWLEDGE_CURATOR_MODEL = _env("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
 
+# Сжатие длинных отчётов перед отправкой в Telegram (tools/telegram_report.py)
+# — чисто суммаризация, дешёвая модель достаточно.
+TELEGRAM_SUMMARIZER_MODEL = _env("MODEL_TELEGRAM_SUMMARIZER", "DeepSeek-V4-Flash")
+
 # --- Инженерные отряды (agents/squads.py, workflows/squad_task.py) ---
 # Постоянные команды (не ad-hoc подбор) — работают параллельно над
 # РАЗНЫМИ задачами. Лиды на проверенных gpt-моделях (эти роли реально
