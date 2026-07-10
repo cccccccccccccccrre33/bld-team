@@ -99,7 +99,17 @@
       "how": "Убрать этот return и заменить на явный exception/ошибку конфигурации, если `OWNER_ACTIVATION_BASE_URL` не задан или не проходит валидацию (HTTPS, не loopback) вне development. Обновить/переписать тесты, которые сейчас ожидают localhost в production (`tests/test_owner_activation_foundation.py`), чтобы они проверяли корректный отказ/ошибку.",
       "created": "10.07.2026 10:25",
       "cto_comment": "Проверил код: `http://localhost:{port}` сейчас остался только как development-only fallback через `_development_activation_base_url()`, а в non-dev `owner_activation_base_url()` возвращает `None`, после чего `build_owner_activation_link()` падает с `RuntimeError`. Тесты уже покрывают именно это поведение — localhost вне development запрещён, так что proposal устарел и дублирует уже выполненную задачу; если Bravo считает иначе, пусть принесут конкретный failing-сценарий, где production реально получает localhost-ссылку."
+    },
+    {
+      "id": "хеврута: tsinghua+product_designer-20260710111215",
+      "title": "А что если в панели мы перестанем показывать anomaly detection как просто список тревог и попробуем собирать для пользователя “историю объекта” — короткий таймлайн, где видно, как сигнал накапливался, что его усилило и почему система вообще решила поднять флаг? Мне кажется, это может резко снизить ощущение “чёрного ящика” и помочь быстрее доверять AI, особенно когда речь про стройку и решения с деньгами. Интересно, не перегрузит ли это интерфейс — или наоборот, даст тот самый спокойный контроль без лишнего шума?",
+      "squad": "хеврута: tsinghua+product_designer",
+      "status": "proposed",
+      "reason": "",
+      "how": "",
+      "created": "10.07.2026 11:12",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "10.07.2026 10:25"
+  "last_updated": "10.07.2026 11:12"
 }
