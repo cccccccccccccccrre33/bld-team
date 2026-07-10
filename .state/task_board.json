@@ -69,7 +69,17 @@
       "how": "Удалить fallback на localhost и сделать базовый URL обязательным (ошибка старта приложения, если не задан/невалиден) для non-dev; в dev оставить явный флаг/ENVIRONMENT=development. Добавить тест, что в production/staging попытка получить base URL без явного значения приводит к исключению, а не к `http://localhost:*`.",
       "created": "09.07.2026 17:58",
       "cto_comment": "Это уже в основном решено: в `owner_activation.py` non-dev без `OWNER_ACTIVATION_BASE_URL`/`RENDER_EXTERNAL_URL` возвращает `None`, а генерация ссылки падает через `RuntimeError`; `http://localhost:{port}` сейчас достижим только при `ENVIRONMENT=development/dev/local`. Текущая формулировка дублирует уже выполненную задачу из вики и преувеличивает риск для staging/production. Если переформулировать — надо не “удалить fallback”, а отдельно проверить startup wiring и закрыть открытые риски из вики: IPv6 zone ID и корректность path для activation URL."
+    },
+    {
+      "id": "pulse:database_engineer+squad_lead_bravo-20260710092159",
+      "title": "Реализовать end-to-end observability и идемпотентность обработки входящих сообщений: на входе генерировать/прокидывать `correlation_id`, писать в БД статус обработки и ретраи по сообщению, добавить per-level spans с метриками latency и SQL count/latency, и обеспечить dedupe через устойчивый `dedupe_key` с UNIQUE-ограничением в Postgres.",
+      "squad": "pulse:database_engineer+squad_lead_bravo",
+      "status": "in_progress",
+      "reason": "Дубля на текущей доске и в вики не вижу, а для Telegram→AI pipeline это не “nice to have”: без dedupe/status/retry мы рискуем получать двойные списания AI, потерянные отчёты и невозможность понять, где сломалась обработка. Но approve только как прагматичный MVP: сначала durable message ledger в Postgres с `correlation_id`, `dedupe_key UNIQUE`, статусами и retry metadata; spans/SQL latency — только на ключевых границах bot/API/AI/DB, без разворачивания тяжёлого observability-комбайна.",
+      "how": "",
+      "created": "10.07.2026 09:21",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "09.07.2026 17:58"
+  "last_updated": "10.07.2026 09:21"
 }
