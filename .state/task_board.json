@@ -79,7 +79,17 @@
       "how": "",
       "created": "10.07.2026 09:21",
       "cto_comment": ""
+    },
+    {
+      "id": "bayesian_architect-20260710100102",
+      "title": "В `bld-system/anomaly/trust.py` Bayesian trust score для прораба зашит фиксированным prior (`TRUST_PRIOR_GOOD=20`, `TRUST_PRIOR_BAD=2`) без tenant/project/segment calibration, из-за чего L9 systematically miscalibrated при смене базовой частоты аномалий между объектами.",
+      "squad": "bayesian_architect",
+      "status": "self_approved",
+      "reason": "Это именно байесовская проблема prior miscalibration: один и тот же Beta-prior применяется к разным режимам данных, хотя base rate аномалий по проектам и типам работ почти наверняка различается. В результате trust_score выглядит статистически “стабильным”, но на новых/малых выборках тянет оценки к неверному среднему и даёт ложную уверенность в owner-facing L9 сигнале.",
+      "how": "Нужно вынести prior в явно версионируемую calibration policy и оценивать его оффлайн по historical anomaly outcomes как минимум на tenant-level, с fallback на global prior и guardrails по sample size/shrinkage. Затем добавить мониторинг calibration drift для trust_score: сравнение predicted trust vs realized anomaly rate по бакетам/сегментам, чтобы prior не оставался “вечной константой” без проверки.",
+      "created": "10.07.2026 10:01",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "10.07.2026 09:24"
+  "last_updated": "10.07.2026 10:01"
 }
