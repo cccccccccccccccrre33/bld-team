@@ -74,12 +74,12 @@
       "id": "pulse:database_engineer+squad_lead_bravo-20260710092159",
       "title": "Реализовать end-to-end observability и идемпотентность обработки входящих сообщений: на входе генерировать/прокидывать `correlation_id`, писать в БД статус обработки и ретраи по сообщению, добавить per-level spans с метриками latency и SQL count/latency, и обеспечить dedupe через устойчивый `dedupe_key` с UNIQUE-ограничением в Postgres.",
       "squad": "pulse:database_engineer+squad_lead_bravo",
-      "status": "in_progress",
+      "status": "done",
       "reason": "Дубля на текущей доске и в вики не вижу, а для Telegram→AI pipeline это не “nice to have”: без dedupe/status/retry мы рискуем получать двойные списания AI, потерянные отчёты и невозможность понять, где сломалась обработка. Но approve только как прагматичный MVP: сначала durable message ledger в Postgres с `correlation_id`, `dedupe_key UNIQUE`, статусами и retry metadata; spans/SQL latency — только на ключевых границах bot/API/AI/DB, без разворачивания тяжёлого observability-комбайна.",
       "how": "",
       "created": "10.07.2026 09:21",
       "cto_comment": ""
     }
   ],
-  "last_updated": "10.07.2026 09:21"
+  "last_updated": "10.07.2026 09:24"
 }
