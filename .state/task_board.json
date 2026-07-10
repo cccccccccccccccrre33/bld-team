@@ -109,7 +109,17 @@
       "how": "",
       "created": "10.07.2026 11:12",
       "cto_comment": ""
+    },
+    {
+      "id": "pulse:product_frontend+product_designer+hr-20260710121413",
+      "title": "Реализовать/проверить end-to-end идемпотентность ingestion Telegram: зафиксировать `dedupe key` на raw Telegram message (и добавить unique constraint в БД), обеспечить статусы `received/processing/persisted/failed` по `correlation_id` и repeat-safe запись (ретрай = no-op/обновление статуса без дублирования фактов).",
+      "squad": "pulse:product_frontend+product_designer+hr",
+      "status": "in_progress",
+      "reason": "Одобряю не как новую “большую фичу”, а как проверку и закрытие фактических дыр: в коде уже есть dedupe через `RawMessage` unique `(tenant_id, source_type, external_id)` и `ON CONFLICT DO NOTHING`, но `correlation_id` живёт в лог-контексте, а не как durable ingestion trace. Не дублируйте уже сделанный слой; задача считается закрытой только если Telegram retry повторно не создаёт факты, статусы raw input доходят до финального состояния, и это покрыто replay-тестом.",
+      "how": "",
+      "created": "10.07.2026 12:14",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "10.07.2026 11:12"
+  "last_updated": "10.07.2026 12:14"
 }
