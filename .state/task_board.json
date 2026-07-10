@@ -134,12 +134,12 @@
       "id": "oxford-20260710172653",
       "title": "В `bld-system/core/settings.py` в AI model map дефолт для `ANALYSIS` выставлен как `\"o1\"` (OpenAI-специфичный), что ломает контракт Bedrock-идентификаторов моделей и может приводить к тихим фолбэкам/неожиданным провайдерам.",
       "squad": "oxford",
-      "status": "in_progress",
+      "status": "done",
       "reason": "Сейчас `AISettings.AIModelMapSettings.ANALYSIS` имеет default `\"o1\"`, тогда как `CHAT/OCR` — Bedrock model IDs (`anthropic.claude-...`). При `PROVIDER=bedrock` это создаёт типо-контрактный разрыв: строка формально валидна, но семантически не принадлежит домену Bedrock моделей, из‑за чего возможны runtime-ошибки или “магические” fallback-ветки.",
       "how": "(1) Установить безопасный Bedrock-дефолт для `ANALYSIS` (аналогично `CHAT/OCR`) и/или сделать валидацию: если `PROVIDER=bedrock`, то `MODEL_MAP.*` должны быть Bedrock IDs (не выглядеть как OpenAI shorthand типа `o1`). (2) Добавить тест на startup contract: `PROVIDER=bedrock` + `ANALYSIS=\"o1\"` → явный `StartupContractError` с понятным сообщением.",
       "created": "10.07.2026 17:26",
       "cto_comment": ""
     }
   ],
-  "last_updated": "10.07.2026 17:26"
+  "last_updated": "10.07.2026 17:31"
 }
