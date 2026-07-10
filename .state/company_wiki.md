@@ -24,3 +24,8 @@
 - Решение/находка: Запланировано разнесение anomaly исторических данных на operational (RLS, runtime) и analytical слой (агрегации без RLS) с отдельным pipeline/retention вместо heavy-query по operational таблицам.  
 - Причина: OLTP Postgres с RLS деградирует на time-series/агрегациях и провоцирует рост техдолга при накоплении snapshot/rule_result истории.  
 - Открытый вопрос/риск: В реализации требуется полноценная интеграция (worker/pipeline с upsert-idempotency, индексы, тесты, retention enforcement) — DDL-скелет без наполняющего кода не закрывает риск.
+
+### Company Pulse → реализовано: database_engineer+squad_lead_bravo — 10.07.2026 09:24
+- Решение/находка: одобрено внедрение end-to-end observability и идемпотентности для Telegram→AI pipeline через `correlation_id`, persistent processing status/retry и устойчивый `dedupe_key` с `UNIQUE` constraint в Postgres + per-level spans/SQL latency только на ключевых границах.
+- Причина: без дедупликации и durable статусов ретраи/параллелизм дают двойные записи и невозможную трассировку источника деградации/латентности.
+- Открытый вопрос/риск: ветка/репозиторий `bld-system` недоступны в текущем окружении tools, из-за чего фактические изменения проверить и ревью провести не удалось.
