@@ -32,7 +32,7 @@ from agents.team import build_team
 from tools.telegram_report import send_telegram_report
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from workflows._common import ask, curate_knowledge
+from workflows._common import ask, curate_knowledge, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate
 
@@ -143,6 +143,17 @@ async def assess_readiness(thread: list[dict]) -> dict | None:
 
 
 async def run_pulse_tick() -> str | None:
+    # Синхронизация ДО обсуждения, не только перед реализацией — иначе
+    # участники чата тоже пытаются звать grep_repo/git_log вслепую и
+    # обсуждение получается менее содержательным. Если синхронизация
+    # не удалась — тихо продолжаем без repo-tools (агенты справятся
+    # чисто текстовым обсуждением), но логируем для видимости.
+    try:
+        from tools.repo_tools import clone_or_update_repos
+        print(clone_or_update_repos())
+    except Exception as e:
+        print(f"[company_pulse] Синхронизация репо не удалась (продолжаем без неё): {e}")
+
     roster = build_full_roster()
     thread = load_thread()
 
@@ -217,6 +228,13 @@ System. Коротко, как в живом чате, 1-3 предложени�
         if approved:
             task_id = add_task(title, f"pulse:{who}", status="in_progress", reason=comment)
             print(f"[company_pulse] Задача одобрена — запускаем реализацию: {title}")
+
+            # Защита на уровне кода (не только .yml) — если синхронизация
+            # репозиториев почему-то не прошла (например, шаг в workflow
+            # забыли/сломали), не тратим Review Gate впустую на пустой
+            # diff, а сразу даём понятный алерт.
+            if not await sync_repos_or_alert():
+                return telegram_message
 
             from workflows.engineering_task import run_engineering_task
             from workflows.task_board import update_task_status
