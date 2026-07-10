@@ -30,7 +30,9 @@ from pathlib import Path
 from agents.roster import build_full_roster
 from agents.team import build_team
 from tools.telegram_report import send_telegram_report
-from workflows._common import curate_knowledge
+from config.client_factory import get_chat_client
+from config.models import BOARD_MODEL_ASSIGNMENTS
+from workflows._common import ask, curate_knowledge
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate
 
@@ -40,7 +42,6 @@ THREAD_PATH = STATE_DIR / "company_thread.json"
 MAX_HISTORY_FOR_CONTEXT = 20
 MAX_THREAD_LENGTH = 200
 NEW_TOPIC_CHANCE = 0.35
-DECISION_MARKERS = ["давайте реализуем", "готовы реализовать", "стоит внедрить", "предлагаю сделать это"]
 
 
 def load_thread() -> list[dict]:
@@ -81,7 +82,7 @@ async def pick_speakers(roster: dict, thread: list[dict]) -> list[str]:
     """1-3 человека говорят в этот час. Если тред активный — есть шанс,
     что ответит кто-то УЖЕ участвовавший (реалистичнее для продолжения
     мысли), плюс всегда есть шанс, что подключится кто-то новый."""
-    count = random.choices([1, 2, 3], weights=[55, 30, 15])[0]
+    count = random.choices([2, 3, 4], weights=[40, 40, 20])[0]
     recent_speakers = list({m["who"] for m in thread[-10:]}) if thread else []
 
     pool = list(roster.keys())
@@ -92,6 +93,53 @@ async def pick_speakers(roster: dict, thread: list[dict]) -> list[str]:
         else:
             speakers.append(random.choice(pool))
     return speakers
+
+
+async def assess_readiness(thread: list[dict]) -> dict | None:
+    """Реальная оценка вместо keyword-matching: смотрит на ВЕСЬ
+    последний виток разговора (не только последнее сообщение) и решает,
+    выкристаллизовалась ли там конкретная, готовая к реализации задача,
+    или это ещё абстрактное обсуждение риска/направления.
+
+    Инженеры в реальном разговоре редко говорят буквально "давайте
+    реализуем" — чаще это "надо бы сначала X" или уточняющий вопрос,
+    из которого решение вырисовывается по совокупности реплик, а не по
+    одной фразе. Поэтому здесь отдельный лёгкий вызов модели, а не
+    строковый поиск."""
+    context = format_thread(thread, limit=15)
+    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS.get("agenda_setter", "gpt-5.2"))
+
+    prompt = f"""
+Вот недавний разговор в общем чате компании:
+{context}
+
+Оцени: выкристаллизовалась ли здесь КОНКРЕТНАЯ задача, готовая к
+реализации (не абстрактный риск "нужно подумать о X", а понятный
+следующий шаг, который можно поручить инженеру) — даже если участники
+не произносили буквально "давайте реализуем". Учитывай совокупность
+реплик, не только последнюю.
+
+Если да — ответь СТРОГО в формате:
+ГОТОВО: ДА
+ЗАДАЧА: [одна конкретная формулировка задачи для инженера, не пересказ
+дискуссии]
+
+Если нет (ещё абстрактно, нужно больше обсуждения, или это открытый
+риск без конкретного следующего шага) — ответь:
+ГОТОВО: НЕТ
+"""
+    response = await ask(client, prompt)
+    if "ГОТОВО: ДА" not in response.upper():
+        return None
+
+    title = ""
+    for line in response.split("\n"):
+        if line.upper().startswith("ЗАДАЧА:"):
+            title = line.split(":", 1)[-1].strip()
+            break
+    if not title:
+        return None
+    return {"title": title}
 
 
 async def run_pulse_tick() -> str | None:
@@ -143,15 +191,13 @@ System. Коротко, как в живом чате, 1-3 предложени�
 
     save_thread(thread)
 
-    combined_text = " ".join(m["text"].lower() for m in new_messages)
-    decision_ready = any(marker in combined_text for marker in DECISION_MARKERS)
-
     telegram_lines = [f"💬 {m['who']}: {m['text']}" for m in new_messages]
     telegram_message = "\n\n".join(telegram_lines)
     send_telegram_report(telegram_message)
 
-    if decision_ready:
-        title = new_messages[-1]["text"][:120]
+    readiness = await assess_readiness(thread)
+    if readiness:
+        title = readiness["title"]
         if is_duplicate(title):
             print("[company_pulse] Похоже на дубль с task board — не эскалируем повторно")
             return telegram_message
@@ -160,15 +206,29 @@ System. Коротко, как в живом чате, 1-3 предложени�
         who = "+".join({m["who"] for m in new_messages})
         approved, comment = await cto_approval(
             f"Company Pulse ({who})", title,
-            "Родилось из живого обсуждения в общем чате компании.",
-            "См. контекст треда выше — конкретный план обсуждался в чате.",
+            "Родилось из живого обсуждения в общем чате компании — "
+            "конкретная задача выкристаллизовалась по совокупности "
+            "нескольких реплик, не из одной фразы.",
+            "См. контекст треда — участники обсуждали конкретный подход.",
         )
         verdict_msg = f"🧭 CTO по теме из чата: {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
         send_telegram_report(verdict_msg)
 
         if approved:
-            add_task(title, f"pulse:{who}", status="in_progress", reason=comment)
-            await curate_knowledge(f"Company Pulse → задача: {who}", f"{telegram_message}\n\n{verdict_msg}")
+            task_id = add_task(title, f"pulse:{who}", status="in_progress", reason=comment)
+            print(f"[company_pulse] Задача одобрена — запускаем реализацию: {title}")
+
+            from workflows.engineering_task import run_engineering_task
+            from workflows.task_board import update_task_status
+
+            engineering_report = await run_engineering_task(title)
+            update_task_status(task_id, "done")
+
+            send_telegram_report(f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ CHAT-ОБСУЖДЕНИЯ\n\n{engineering_report}")
+            await curate_knowledge(
+                f"Company Pulse → реализовано: {who}",
+                f"{telegram_message}\n\n{verdict_msg}\n\n{engineering_report}",
+            )
 
     return telegram_message
 
