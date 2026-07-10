@@ -94,11 +94,11 @@
       "id": "bravo-20260710102525",
       "title": "Удалить продовый fallback `return f\"http://localhost:{port}\"` в `bld-system/core/owner_activation.py` (и соответствующие тесты), чтобы в non-dev нельзя было сформировать activation URL на localhost/HTTP",
       "squad": "bravo",
-      "status": "proposed",
+      "status": "rejected",
       "reason": "В коде по‑прежнему есть возврат `http://localhost:{port}` (grep: `core/owner_activation.py:104`), что создаёт риск генерации некорректных/небезопасных activation-ссылок в production при ошибочной конфигурации. Это уже было “выполнено”, но фактически осталось в коде, значит контроль над безопасным base URL неполный.",
       "how": "Убрать этот return и заменить на явный exception/ошибку конфигурации, если `OWNER_ACTIVATION_BASE_URL` не задан или не проходит валидацию (HTTPS, не loopback) вне development. Обновить/переписать тесты, которые сейчас ожидают localhost в production (`tests/test_owner_activation_foundation.py`), чтобы они проверяли корректный отказ/ошибку.",
       "created": "10.07.2026 10:25",
-      "cto_comment": ""
+      "cto_comment": "Проверил код: `http://localhost:{port}` сейчас остался только как development-only fallback через `_development_activation_base_url()`, а в non-dev `owner_activation_base_url()` возвращает `None`, после чего `build_owner_activation_link()` падает с `RuntimeError`. Тесты уже покрывают именно это поведение — localhost вне development запрещён, так что proposal устарел и дублирует уже выполненную задачу; если Bravo считает иначе, пусть принесут конкретный failing-сценарий, где production реально получает localhost-ссылку."
     }
   ],
   "last_updated": "10.07.2026 10:25"
