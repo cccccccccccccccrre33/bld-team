@@ -129,7 +129,17 @@
       "how": "Удалить fallback на localhost/HTTP и вместо него в non-dev явно падать с понятной ошибкой конфигурации, требуя HTTPS base URL из env. Обновить тесты (`tests/test_owner_activation_foundation.py`, `tests/test_auth_register.py`) чтобы не ожидали localhost в production и добавили кейсы на корректный отказ.",
       "created": "10.07.2026 14:29",
       "cto_comment": "В коде `bld-system/core/owner_activation.py` уже нет продового `return f\"http://localhost:{port}\"`: localhost fallback сейчас вызывается только при `_is_development_environment()`, а вне dev `owner_activation_base_url()` возвращает `None` и генерация ссылки падает через `RuntimeError`. Это уже отражено в wiki как выполненное, поэтому текущая заявка выглядит stale/дубликатом; если Bravo хочет закрыть оставшийся риск по IPv6 zone ID или path validation — пусть заводят отдельную точную задачу с актуальной ссылкой на код."
+    },
+    {
+      "id": "oxford-20260710172653",
+      "title": "В `bld-system/core/settings.py` в AI model map дефолт для `ANALYSIS` выставлен как `\"o1\"` (OpenAI-специфичный), что ломает контракт Bedrock-идентификаторов моделей и может приводить к тихим фолбэкам/неожиданным провайдерам.",
+      "squad": "oxford",
+      "status": "self_approved",
+      "reason": "Сейчас `AISettings.AIModelMapSettings.ANALYSIS` имеет default `\"o1\"`, тогда как `CHAT/OCR` — Bedrock model IDs (`anthropic.claude-...`). При `PROVIDER=bedrock` это создаёт типо-контрактный разрыв: строка формально валидна, но семантически не принадлежит домену Bedrock моделей, из‑за чего возможны runtime-ошибки или “магические” fallback-ветки.",
+      "how": "(1) Установить безопасный Bedrock-дефолт для `ANALYSIS` (аналогично `CHAT/OCR`) и/или сделать валидацию: если `PROVIDER=bedrock`, то `MODEL_MAP.*` должны быть Bedrock IDs (не выглядеть как OpenAI shorthand типа `o1`). (2) Добавить тест на startup contract: `PROVIDER=bedrock` + `ANALYSIS=\"o1\"` → явный `StartupContractError` с понятным сообщением.",
+      "created": "10.07.2026 17:26",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "10.07.2026 14:29"
+  "last_updated": "10.07.2026 17:26"
 }
