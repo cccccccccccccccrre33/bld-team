@@ -124,11 +124,11 @@
       "id": "bravo-20260710142900",
       "title": "Удалить продовый fallback `return f\"http://localhost:{port}\"` из `bld-system/core/owner_activation.py` и запретить генерацию activation URL на localhost/HTTP вне dev (исправить/обновить тесты).",
       "squad": "bravo",
-      "status": "proposed",
+      "status": "rejected",
       "reason": "В коде всё ещё есть реальный возврат `http://localhost:{port}` (строка `core/owner_activation.py:104`), что позволяет сформировать небезопасную activation-ссылку (localhost/HTTP) при неверной конфигурации. Это риск безопасности (фишинг/перехват/ошибочная ссылка) и надёжности (пользователь не сможет активироваться).",
       "how": "Удалить fallback на localhost/HTTP и вместо него в non-dev явно падать с понятной ошибкой конфигурации, требуя HTTPS base URL из env. Обновить тесты (`tests/test_owner_activation_foundation.py`, `tests/test_auth_register.py`) чтобы не ожидали localhost в production и добавили кейсы на корректный отказ.",
       "created": "10.07.2026 14:29",
-      "cto_comment": ""
+      "cto_comment": "В коде `bld-system/core/owner_activation.py` уже нет продового `return f\"http://localhost:{port}\"`: localhost fallback сейчас вызывается только при `_is_development_environment()`, а вне dev `owner_activation_base_url()` возвращает `None` и генерация ссылки падает через `RuntimeError`. Это уже отражено в wiki как выполненное, поэтому текущая заявка выглядит stale/дубликатом; если Bravo хочет закрыть оставшийся риск по IPv6 zone ID или path validation — пусть заводят отдельную точную задачу с актуальной ссылкой на код."
     }
   ],
   "last_updated": "10.07.2026 14:29"
