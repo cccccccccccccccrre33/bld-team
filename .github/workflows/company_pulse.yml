@@ -29,6 +29,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Sync BLD repos (bld-system, bld-panel)
+        env:
+          GITHUB_TOKEN: ${{ secrets.BLD_REPOS_PAT }}
+        run: |
+          python -c "
+          from tools.repo_tools import clone_or_update_repos
+          print(clone_or_update_repos())
+          "
+
       - name: Run Company Pulse tick
         env:
           FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
@@ -36,6 +45,7 @@ jobs:
           AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
           TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main_company_pulse.py
