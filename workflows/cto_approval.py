@@ -24,6 +24,71 @@ from agents.team import build_team
 from workflows.task_board import get_board_summary
 
 
+async def consult(
+    reviewer_agent,
+    reviewer_role_name: str,
+    initiator_label: str,
+    task_title: str,
+    reason: str,
+    how: str,
+) -> tuple[bool, str]:
+    """Обобщённая консультация — тот же процесс, что и cto_approval, но
+    с ЛЮБЫМ ревьюером (не обязательно CTO). Используется, когда логичнее
+    спросить профильного эксперта в конкретной области (например,
+    Bayesian Architect по вопросу калибровки), а не всегда идти к CTO
+    формально. Возвращает (approved, comment) — та же семантика."""
+    from pathlib import Path
+
+    wiki_text = ""
+    wiki_path = Path(".state/company_wiki.md")
+    if wiki_path.exists():
+        full = wiki_path.read_text(encoding="utf-8")
+        wiki_text = full[-4000:]
+
+    board_summary = get_board_summary()
+
+    prompt = f"""
+Ты — {reviewer_role_name}. К тебе пришёл {initiator_label} с идеей —
+хочет обсудить её с тобой перед тем, как реализовывать (в компании
+принято не решать в одиночку, даже если сам уверен в своей области).
+
+ТЕКУЩАЯ ДОСКА ЗАДАЧ (что сейчас в работе и что ждёт):
+{board_summary}
+
+ПОСЛЕДНИЕ ЗАПИСИ ВИКИ КОМПАНИИ (что уже решалось):
+{wiki_text if wiki_text else "(вики пока пустая)"}
+
+PROPOSAL от {initiator_label}:
+Задача: {task_title}
+Почему важно: {reason}
+Как планируют делать: {how}
+
+Дай конкретный ответ: одобрить или отклонить (не эскалируй дальше —
+если задача реально фундаментальная, скажи об этом в комментарии, но
+дай своё мнение как эксперт, а не перекладывай решение). Смотри на:
+1. Не делает ли кто-то то же самое прямо сейчас (task board)?
+2. Не решалось ли это уже (вики)?
+3. Это реально важно для BLD System сейчас, или "приятно иметь" когда
+   нет ни одного платящего клиента?
+4. Реалистичен ли план — нет ли переусложнения?
+
+Ответь строго в формате:
+РЕШЕНИЕ: APPROVE или REJECT
+КОММЕНТАРИЙ: [2-3 конкретных предложения, без воды]
+"""
+    response = await reviewer_agent.run(prompt)
+    text = response.text.strip()
+
+    comment = text
+    for line in text.split("\n"):
+        if line.upper().startswith("КОММЕНТАРИЙ:"):
+            comment = line.split(":", 1)[-1].strip()
+            break
+
+    approved = "РЕШЕНИЕ: APPROVE" in text.upper()
+    return approved, comment
+
+
 async def cto_approval(
     squad_label: str,
     task_title: str,
@@ -33,7 +98,9 @@ async def cto_approval(
     """Возвращает (approved: bool, cto_comment: str).
 
     CTO читает task board (контекст что уже в работе), вики (что уже
-    решалось) и даёт конкретный ответ с обоснованием.
+    решалось) и даёт конкретный ответ с обоснованием. В отличие от
+    consult() — умеет ESCALATE к CEO, если сам не уверен (это
+    специфика именно роли CTO, не общий механизм).
     """
     from pathlib import Path
 
@@ -41,7 +108,7 @@ async def cto_approval(
     wiki_path = Path(".state/company_wiki.md")
     if wiki_path.exists():
         full = wiki_path.read_text(encoding="utf-8")
-        wiki_text = full[-4000:]  # последние записи
+        wiki_text = full[-4000:]
 
     board_summary = get_board_summary()
 
