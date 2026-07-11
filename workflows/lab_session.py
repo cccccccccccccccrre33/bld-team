@@ -30,7 +30,7 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, run_free_conversation, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, fair_sample, record_participation, run_free_conversation, sync_repos_or_alert
 
 MAX_TURNS = 10  # раунды разговора в паре/тройке — короче группового заседания
 
@@ -51,7 +51,7 @@ OPENING_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
 def pick_group(roster: dict, size_hint: int | None = None) -> list[str]:
     """Выбирает 2 (с шансом 3) случайных участников из полного ростера."""
     size = size_hint or random.choices([2, 3], weights=[70, 30])[0]
-    return random.sample(list(roster.keys()), k=min(size, len(roster)))
+    return fair_sample(list(roster.keys()), k=min(size, len(roster)))
 
 
 async def find_problem(group_names: list[str]) -> str:
@@ -151,6 +151,7 @@ async def main():
 
     roster = build_full_roster()
     group_names = pick_group(roster)
+    record_participation(*group_names)
     print(f"Группа: {', '.join(group_names)}")
 
     # Если в группу попал кто-то с доступом к коду — на всякий случай
