@@ -27,7 +27,7 @@ from agents.ceo import build_ceo
 from agents.roster import build_full_roster
 from agents.team import build_team
 from tools.telegram_report import send_telegram_report
-from workflows._common import curate_knowledge, run_free_conversation
+from workflows._common import curate_knowledge, fair_sample, record_participation, run_free_conversation
 from workflows.task_board import add_task
 
 MAX_TURNS = 10  # чуть больше, чем в Лаборатории — это не решение задачи, а разговор
@@ -40,9 +40,11 @@ MENTOR_LABELS = {"cto": "🧑‍💼 CTO", "ceo": "👑 CEO"}
 
 
 def pick_group(roster: dict, size_hint: int | None = None) -> list[str]:
-    """2-4 человека, с уклоном к меньшим группам (легче договориться)."""
+    """2-4 человека, с уклоном к меньшим группам (легче договориться) —
+    смещено в пользу тех, кто дольше всех не участвовал НИГДЕ в
+    компании (общий трекер fair_sample)."""
     size = size_hint or random.choices([2, 3, 4], weights=[45, 35, 20])[0]
-    return random.sample(list(roster.keys()), k=min(size, len(roster)))
+    return fair_sample(list(roster.keys()), k=min(size, len(roster)))
 
 
 async def spark_hypothesis(group_names: list[str], roster: dict) -> str:
@@ -93,6 +95,7 @@ async def find_mentor_reaction(topic: str, transcript_summary: str) -> tuple[str
 async def run_chevruta() -> str:
     roster = build_full_roster()
     group_names = pick_group(roster)
+    record_participation(*group_names)
     print(f"Хеврута: {', '.join(group_names)}")
 
     topic = await spark_hypothesis(group_names, roster)
