@@ -1,13 +1,18 @@
 """
 Индивидуальная инициатива — не только 2 фиксированных отряда. ЛЮБОЙ
-человек компании с реальным доступом к коду (9 молодых глобальных
-гениев, 4 специалиста, 3 роли роста — итого 16 человек) может сам
-заметить проблему в СВОЕЙ специализации и предложить фикс.
+человек компании с реальным доступом к коду (16 специалистов + 10
+архитекторов = 26 человек) может сам заметить проблему в СВОЕЙ
+специализации и предложить фикс.
 
-Бюрократия масштабируется по уверенности, а не по должности:
-- Уверен, что это чётко его специализация → берёт сам, без CTO.
-- Сомневается или это не совсем его зона → идёт к CTO за approval,
-  как и отряды (workflows/cto_approval.py).
+ВАЖНО: решение никогда не принимается одним человеком в одиночку, даже
+если он сам уверен в своей области. Каждая инициатива проходит
+консультацию — по возможности с профильным экспертом в этой же
+области (архитектором из agents/architecture_council.py, если
+специализация совпадает — это и есть его реальный "кумир", у кого он
+спросит), а если профильного эксперта нет — с CTO. "Уверенность"
+человека влияет не на то, спрашивать ли кого-то вообще, а на то, идёт
+ли он к CTO формально или к более узкому специалисту рядом с собой —
+консультация происходит всегда.
 
 Может привлечь ещё людей себе в помощь — это уже встроено в
 run_engineering_task (helper_pool по умолчанию = весь общий пул).
@@ -18,40 +23,99 @@ import random
 import sys
 
 from agents.architecture_council import ARCHITECT_BUILDERS, ARCHITECT_LABELS
+from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
 from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS, GLOBAL_LABELS as EXPANSION_LABELS
 from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo
 from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge
-from workflows.cto_approval import cto_approval
+from workflows._common import compile_brief, curate_knowledge, fair_sample, format_notebook, load_notebook, record_participation, save_notebook_entry
+from workflows.cto_approval import consult, cto_approval
 from workflows.engineering_task import run_engineering_task
 from workflows.task_board import add_task, can_take_more, get_board_summary, is_duplicate, update_task_status
 
 ALL_BUILDERS = {**GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS, **ARCHITECT_BUILDERS}
 ALL_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
 
+# "Молодые" — те же 19 человек, что описаны как "молодые гении" в
+# agents/global_geniuses.py (недавние выпускники) и
+# agents/expansion_geniuses.py (10 новых вузов). У них персональный
+# дневник (см. workflows/_common.py: load_notebook/save_notebook_entry)
+# — по запросу Валика: "постоянная студенческая погружённость",
+# непрерывная нить любопытства, а не разовые случайные вспышки.
+YOUNG_NAMES = set(GENIUS_BUILDERS.keys()) | set(EXPANSION_BUILDERS.keys())
+
+
+def weighted_pick() -> str:
+    """Молодые выбираются заметно чаще (по просьбе Валика — они должны
+    жить в системе), но не эксклюзивно — сеньоры/специалисты тоже
+    иногда берут инициативу. ~65% попаданий на 19 молодых, ~35% на
+    остальных 17. ВНУТРИ каждой группы — честный выбор через
+    fair_sample (общий трекер участия по всей компании), чтобы внутри
+    самой группы молодых/сеньоров тоже не было перекоса в пользу
+    одних и тех же людей."""
+    if random.random() < 0.65:
+        return fair_sample(list(YOUNG_NAMES), k=1)[0]
+    others = [n for n in ALL_BUILDERS if n not in YOUNG_NAMES]
+    return fair_sample(others, k=1)[0]
+
+
+def find_domain_consultant(name: str, title: str, reason: str):
+    """Ищет профильного эксперта (архитектора) для консультации по теме
+    задачи — по совпадению ключевых слов темы с зоной экспертизы
+    архитектора. Исключает самого инициатора (нет смысла "спрашивать
+    себя"). Если совпадений нет — вернёт None, и тогда идём к CTO.
+
+    Возвращает (consultant_key, consultant_agent, consultant_label)
+    или (None, None, None)."""
+    text = f"{title} {reason}".lower()
+    for arch_key, keywords in ARCHITECT_KEYWORDS.items():
+        if arch_key == name:
+            continue
+        if any(kw in text for kw in keywords):
+            builder = ARCHITECT_BUILDERS[arch_key]
+            return arch_key, builder(can_write=False), ARCHITECT_LABELS[arch_key]
+    return None, None, None
+
 
 async def scout_and_propose(name: str) -> dict | None:
     """Человек сканирует код в СВОЕЙ специализации (read-only) и сам
-    оценивает, уверен ли он взять это на себя, или стоит спросить CTO."""
+    оценивает, уверен ли он взять это на себя, или стоит спросить CTO.
+
+    Для молодых (YOUNG_NAMES) — видит свою историю из личного дневника
+    перед сканированием, чтобы разговор ощущался как продолжение одной
+    непрерывной нити любопытства, а не разовый случайный заход."""
     if not can_take_more():
         print(f"[{name}] Лимит параллельных задач исчерпан")
         return None
 
     board_summary = get_board_summary()
     person = ALL_BUILDERS[name](can_write=False)
+    is_young = name in YOUNG_NAMES
+
+    notebook_block = ""
+    if is_young:
+        notebook_entries = load_notebook(name)
+        notebook_block = f"""
+Твой личный дневник (что тебя занимало в прошлые разы — продолжай
+эту нить, если она ещё актуальна, или переключись на новое, если
+исчерпал тему):
+{format_notebook(notebook_entries)}
+"""
 
     prompt = f"""
 Доска активных задач компании (не дублируй то, что уже в работе):
 {board_summary}
-
+{notebook_block}
 Загляни в реальный код (git_log, grep_repo по bld-system и bld-panel)
 и найди ОДНУ конкретную проблему именно в твоей специализации — не
 общую, а такую, в которой ты реально эксперт.
 
 Если ничего реального не нашёл — ответь строго: НЕТ ЗАДАЧИ
+[и одной строкой добавь, куда смотрел и что примерно видел — это
+уйдёт в твой личный дневник, даже отсутствие готовой задачи — это
+часть твоего непрерывного исследования]
 
 Если нашёл — ответь СТРОГО в этом формате:
 ЗАДАЧА: [одна строка]
@@ -59,13 +123,22 @@ async def scout_and_propose(name: str) -> dict | None:
 КАК: [2-3 предложения, конкретный план]
 УВЕРЕННОСТЬ: УВЕРЕН или СПРОСИТЬ CTO
 
-УВЕРЕН — если это чётко твоя специализация и ты готов взять полную
-ответственность сам, без чужого одобрения. СПРОСИТЬ CTO — если
-сомневаешься, или задача выходит за границы твоей конкретной
-экспертизы, или может затронуть что-то более широкое.
+УВЕРЕН — если это чётко твоя специализация и у тебя есть ясный план.
+СПРОСИТЬ CTO — если сомневаешься, или задача выходит за границы твоей
+конкретной экспертизы, или может затронуть что-то более широкое.
+В любом случае ты обсудишь это с кем-то перед реализацией — "уверен"
+влияет на то, к кому идти (профильный эксперт рядом или CTO), а не на
+то, спрашивать ли вообще.
 """
     response = await person.run(prompt)
     text = response.text.strip()
+
+    if is_young:
+        # Дневник пишется ВСЕГДА — даже "ничего конкретного не нашёл,
+        # но смотрел туда-то" — именно это создаёт ощущение непрерывной
+        # вовлечённости, а не редких случайных вспышек.
+        diary_entry = text[:400] if len(text) > 30 else "Заходил посмотреть код, пока без конкретных зацепок."
+        save_notebook_entry(name, diary_entry)
 
     if "НЕТ ЗАДАЧИ" in text.upper() or len(text) < 30:
         return None
@@ -91,7 +164,8 @@ async def scout_and_propose(name: str) -> dict | None:
 
 
 async def run_individual_initiative(name: str | None = None) -> None:
-    name = name or random.choice(list(ALL_BUILDERS.keys()))
+    name = name or weighted_pick()
+    record_participation(name)
     label = ALL_LABELS.get(name, name)
 
     print(f"\n{'=' * 60}\nИНДИВИДУАЛЬНАЯ ИНИЦИАТИВА: {label}\n{'=' * 60}")
@@ -106,29 +180,40 @@ async def run_individual_initiative(name: str | None = None) -> None:
     how = proposal.get("how", "")
     confident = proposal.get("confident", False)
 
-    print(f"[{name}] Proposal: {title} (уверенность: {'сам' if confident else 'спросить CTO'})")
+    print(f"[{name}] Proposal: {title} (склонность: {'к профильному эксперту' if confident else 'к CTO'})")
 
-    if confident:
-        task_id = add_task(title, name, status="self_approved", reason=reason, how=how)
-        update_task_status(task_id, "in_progress")
-        verdict_note = f"🔓 {label} взял(а) сам(а) — уверен(а), что это его/её специализация"
+    task_id = add_task(title, name, status="proposed", reason=reason, how=how)
+
+    # Всегда консультируемся — "уверенность" влияет только на то, к
+    # кому идти. Сначала пробуем найти профильного эксперта (его
+    # реального "кумира" в этой области); если такого нет — CTO.
+    consultant_key, consultant_agent, consultant_label = (
+        find_domain_consultant(name, title, reason) if confident else (None, None, None)
+    )
+
+    if consultant_agent:
+        print(f"[{name}] Идёт посоветоваться с профильным экспертом: {consultant_label}")
+        approved, comment = await consult(consultant_agent, consultant_label, label, title, reason, how)
+        verdict_source = consultant_label
     else:
-        task_id = add_task(title, name, status="proposed", reason=reason, how=how)
-        print(f"[{name}] Не уверен(а) — спрашивает CTO...")
-        approved, cto_comment = await cto_approval(label, title, reason, how)
+        print(f"[{name}] Идёт советоваться с CTO...")
+        approved, comment = await cto_approval(label, title, reason, how)
+        verdict_source = "🧑‍💼 CTO"
 
-        if not approved:
-            update_task_status(task_id, "rejected", cto_comment)
-            report = (
-                f"❌ CTO ОТКЛОНИЛ ИНИЦИАТИВУ\n\n"
-                f"{label}\nЗадача: {title}\n\nКомментарий CTO: {cto_comment}"
-            )
-            print(report)
-            send_telegram_report(report)
-            return
+    if not approved:
+        update_task_status(task_id, "rejected", comment)
+        report = (
+            f"❌ ИНИЦИАТИВА ОТКЛОНЕНА ({verdict_source})\n\n"
+            f"{label}\nЗадача: {title}\n\nКомментарий: {comment}"
+        )
+        print(report)
+        send_telegram_report(report)
+        if name in YOUNG_NAMES:
+            save_notebook_entry(name, f"Предложил '{title}' — отклонили ({comment[:150]}). Подумаю дальше.")
+        return
 
-        update_task_status(task_id, "in_progress", cto_comment)
-        verdict_note = f"✅ Одобрено CTO: {cto_comment}"
+    update_task_status(task_id, "in_progress", comment)
+    verdict_note = f"✅ Одобрено ({verdict_source}): {comment}"
 
     # Реализация — сам инициатор становится "лидом" этой задачи (со
     # своим полным write-доступом), может привлечь помощь из общего
@@ -142,6 +227,8 @@ async def run_individual_initiative(name: str | None = None) -> None:
     print(f"\n{brief}")
     send_telegram_report(brief)
     await curate_knowledge(f"Инициатива: {label}", full_report)
+    if name in YOUNG_NAMES:
+        save_notebook_entry(name, f"Реализовал '{title}' — одобрили и довёл до кода. Дальше можно копать глубже в эту область или переключиться.")
 
 
 async def main():
@@ -150,7 +237,16 @@ async def main():
     print("Синхронизация репозиториев...")
     print(clone_or_update_repos())
 
-    await run_individual_initiative(name)
+    try:
+        await run_individual_initiative(name)
+    except Exception as e:
+        error_alert = (
+            "🔴 СБОЙ В INDIVIDUAL INITIATIVE\n\n"
+            f"{type(e).__name__}: {e}\n\n"
+            "Проверь полный лог этого запуска в GitHub Actions для деталей."
+        )
+        print(error_alert)
+        send_telegram_report(error_alert)
 
 
 if __name__ == "__main__":
