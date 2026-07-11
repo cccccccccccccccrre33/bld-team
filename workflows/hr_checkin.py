@@ -21,7 +21,7 @@ from agents.roster import build_full_roster
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from config.client_factory import get_chat_client
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask
+from workflows._common import ask, fair_sample, record_participation
 
 MAX_EXCHANGES = 5  # вопрос-ответ пар — это разговор, не допрос
 
@@ -104,7 +104,8 @@ async def main():
     # HR не может позвать сам себя или COO дважды подряд — берём из
     # полного ростера минус hr.
     candidates = [n for n in roster.keys() if n != "hr"]
-    interviewee_name = random.choice(candidates)
+    interviewee_name = fair_sample(candidates, k=1)[0]
+    record_participation(interviewee_name)
 
     exec_board = build_executive_board()
     hr_agent = exec_board["hr"]
