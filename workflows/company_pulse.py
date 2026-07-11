@@ -1,23 +1,20 @@
 """
-Company Pulse — единственный "постоянно живой" канал компании. Раньше
-активность была россыпью несвязанных вспышек (Chevruta/Lab/Individual/
-Squad Initiative — каждая начинала и заканчивала свою сессию за одну
-минуту раз в несколько часов, с шансом пропуска). Ощущение было:
-компания "работает" 10% дня, остальное — тишина.
+Company Pulse — "постоянно живой" канал компании. Раньше был ОДИН
+непрерывный тред с 2-4 говорящими за тик — по просьбе Валика теперь
+за тик идёт НЕСКОЛЬКО (2-3) НЕЗАВИСИМЫХ параллельных мини-разговоров
+на разные темы одновременно — заметно больше разных идей летает по
+компании единовременно, а не одна тема за раз.
 
-Теперь есть ОДИН непрерывный тред (.state/company_thread.json,
-коммитится в git между запусками — тот же паттерн, что и task board/
-вики). Раз в час 1-3 случайных человека из всей компании (51 человек)
-либо продолжают текущую тему, либо — если тема исчерпана или её ещё
-не было — кто-то поднимает новую. Это ближе к тому, как реально
-работает Slack-канал компании: сообщения появляются не залпом, а
-растянуто во времени, кто-то отвечает через час.
+Все темы живут в .state/company_threads.json — список независимых
+тредов (id, topic, messages, last_active), коммитится в git между
+запусками. Каждый тик: часть тредов продолжается (кто-то отвечает в
+уже начатый разговор), часть — новые (кто-то поднимает свежую тему).
+Старые/затихшие треды архивируются в вики и не растут бесконечно.
 
-Когда разговор реально доходит до готового к реализации решения —
-уходит на approval к CTO (как и Squad/Individual Initiative), попадает
-на task board, дальше по обычному циклу (реализация, Review Gate).
-Большинство сообщений НЕ доходят до реализации — это нормально, живой
-чат состоит по большей части из мыслей, а не из тикетов.
+Когда какой-то из тредов реально доходит до готового решения — уходит
+на approval к CTO, попадает на task board, реализуется — как и раньше.
+Каждый говорящий использует свою обычную модель (без экономии на
+качестве мысли, по явному запросу Валика).
 """
 
 import asyncio
@@ -29,128 +26,188 @@ from pathlib import Path
 
 from agents.roster import build_full_roster
 from agents.team import build_team
-from tools.telegram_report import send_telegram_report
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
+from tools.telegram_report import send_telegram_report
 from workflows._common import ask, curate_knowledge, fair_sample, record_participation, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate
 
 STATE_DIR = Path(".state")
-THREAD_PATH = STATE_DIR / "company_thread.json"
+THREADS_PATH = STATE_DIR / "company_threads.json"
 
-MAX_HISTORY_FOR_CONTEXT = 20
-MAX_THREAD_LENGTH = 200
-NEW_TOPIC_CHANCE = 0.35
+MAX_HISTORY_FOR_CONTEXT = 15
+MAX_ACTIVE_THREADS = 6  # старые/затихшие архивируются, чтобы не расти бесконечно
+THREADS_PER_TICK = None  # None = случайно 2-3, см. ниже
+NEW_TOPIC_CHANCE = 0.4  # выше, чем раньше — больше новых тем, не только продолжение старых
 
 
-def load_thread() -> list[dict]:
-    if not THREAD_PATH.exists():
+def load_threads() -> list[dict]:
+    if not THREADS_PATH.exists():
         return []
     try:
-        return json.loads(THREAD_PATH.read_text(encoding="utf-8"))
+        return json.loads(THREADS_PATH.read_text(encoding="utf-8"))
     except Exception:
         return []
 
 
-def save_thread(thread: list[dict]) -> None:
+def save_threads(threads: list[dict]) -> None:
     STATE_DIR.mkdir(exist_ok=True)
-    thread = thread[-MAX_THREAD_LENGTH:]
-    THREAD_PATH.write_text(json.dumps(thread, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Архивируем самые старые сверх лимита — не теряем их: то, что
+    # реально решилось, уже ушло в вики через curate_knowledge при
+    # эскалации; то, что просто затихло, отваливается молча, как в
+    # реальном чате старые ветки уходят вниз и забываются.
+    threads = sorted(threads, key=lambda t: t["last_active"], reverse=True)[:MAX_ACTIVE_THREADS]
+    THREADS_PATH.write_text(json.dumps(threads, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
         subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
         subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
-        subprocess.run(["git", "add", str(THREAD_PATH)], check=True)
+        subprocess.run(["git", "add", str(THREADS_PATH)], check=True)
         result = subprocess.run(
-            ["git", "commit", "-m", "chore: company pulse — новые сообщения в треде"],
+            ["git", "commit", "-m", "chore: company pulse — новые сообщения"],
             capture_output=True, text=True,
         )
         if result.returncode == 0:
             subprocess.run(["git", "push"], check=True)
     except Exception as e:
-        print(f"[company_pulse] Не удалось сохранить тред в git: {e}")
+        print(f"[company_pulse] Не удалось сохранить треды в git: {e}")
 
 
-def format_thread(thread: list[dict], limit: int = MAX_HISTORY_FOR_CONTEXT) -> str:
-    if not thread:
-        return "(тред пуст — ты первый, кто пишет сюда)"
-    recent = thread[-limit:]
+def format_thread_messages(messages: list[dict], limit: int = MAX_HISTORY_FOR_CONTEXT) -> str:
+    if not messages:
+        return "(эта ветка только начинается)"
+    recent = messages[-limit:]
     return "\n".join(f"[{m['time']}] {m['who']}: {m['text']}" for m in recent)
 
 
-async def pick_speakers(roster: dict, thread: list[dict]) -> list[str]:
-    """1-3 человека говорят в этот час. Если тред активный — есть шанс,
-    что ответит кто-то УЖЕ участвовавший (реалистичнее для продолжения
-    мысли), плюс всегда есть шанс, что подключится кто-то новый —
-    смещённый в пользу тех, кто дольше всех не участвовал НИГДЕ в
-    компании (общий трекер fair_sample, не только в этом треде)."""
-    count = random.choices([2, 3, 4], weights=[40, 40, 20])[0]
-    recent_speakers = list({m["who"] for m in thread[-10:]}) if thread else []
-
-    pool = list(roster.keys())
-    speakers = []
-    for _ in range(count):
-        if recent_speakers and random.random() < 0.4:
-            speakers.append(random.choice(recent_speakers))
-        else:
-            candidates = [p for p in pool if p not in speakers] or pool
-            speakers.extend(fair_sample(candidates, k=1))
-    return speakers
-
-
-async def assess_readiness(thread: list[dict]) -> dict | None:
-    """Реальная оценка вместо keyword-matching: смотрит на ВЕСЬ
-    последний виток разговора (не только последнее сообщение) и решает,
-    выкристаллизовалась ли там конкретная, готовая к реализации задача,
-    или это ещё абстрактное обсуждение риска/направления.
-
-    Инженеры в реальном разговоре редко говорят буквально "давайте
-    реализуем" — чаще это "надо бы сначала X" или уточняющий вопрос,
-    из которого решение вырисовывается по совокупности реплик, а не по
-    одной фразе. Поэтому здесь отдельный лёгкий вызов модели, а не
-    строковый поиск."""
-    context = format_thread(thread, limit=15)
+async def assess_readiness(messages: list[dict]) -> dict | None:
+    """Смотрит на ВЕСЬ виток разговора конкретной ветки (не только
+    последнее сообщение) и решает, выкристаллизовалась ли там
+    конкретная задача — даже без явных слов "давайте реализуем"."""
+    context = format_thread_messages(messages, limit=15)
     client = get_chat_client(BOARD_MODEL_ASSIGNMENTS.get("agenda_setter", "gpt-5.2"))
 
     prompt = f"""
-Вот недавний разговор в общем чате компании:
+Вот разговор в одной из веток чата компании:
 {context}
 
 Оцени: выкристаллизовалась ли здесь КОНКРЕТНАЯ задача, готовая к
-реализации (не абстрактный риск "нужно подумать о X", а понятный
-следующий шаг, который можно поручить инженеру) — даже если участники
-не произносили буквально "давайте реализуем". Учитывай совокупность
-реплик, не только последнюю.
+реализации (не абстрактный риск, а понятный следующий шаг) — даже
+если участники не произносили буквально "давайте реализуем". Учитывай
+совокупность реплик.
 
-Если да — ответь СТРОГО в формате:
+Если да — ответь строго:
 ГОТОВО: ДА
-ЗАДАЧА: [одна конкретная формулировка задачи для инженера, не пересказ
-дискуссии]
+ЗАДАЧА: [одна конкретная формулировка для инженера]
 
-Если нет (ещё абстрактно, нужно больше обсуждения, или это открытый
-риск без конкретного следующего шага) — ответь:
+Если нет:
 ГОТОВО: НЕТ
 """
     response = await ask(client, prompt)
     if "ГОТОВО: ДА" not in response.upper():
         return None
-
     title = ""
     for line in response.split("\n"):
         if line.upper().startswith("ЗАДАЧА:"):
             title = line.split(":", 1)[-1].strip()
             break
-    if not title:
+    return {"title": title} if title else None
+
+
+async def run_one_thread(roster: dict, thread: dict | None, excluded: set[str]) -> tuple[dict, list[dict]]:
+    """Прогоняет ОДНУ независимую мини-ветку (1-2 реплики за тик).
+    excluded — люди, уже занятые в других ветках этого же тика (чтобы
+    один человек не говорил одновременно в двух разных разговорах).
+    Возвращает (обновлённый thread-объект, новые сообщения этого тика)."""
+    pool = [p for p in roster if p not in excluded]
+    if not pool:
+        pool = list(roster.keys())
+
+    is_new = thread is None
+    if is_new:
+        starter = fair_sample(pool, k=1)[0]
+        person = roster[starter]
+        prompt = """
+Ты в одном из рабочих чатов компании — свободная ветка для новых
+мыслей о системе. Начни разговор — какая мысль о BLD System реально
+сейчас тебя занимает? Пиши как в живом чате: коротко, естественно,
+1-3 предложения, без формальных заголовков.
+"""
+        response = await person.run(prompt)
+        text = response.text.strip()
+        msg = {"who": starter, "text": text, "time": datetime.now().strftime("%H:%M")}
+        thread = {
+            "id": f"t{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(10,99)}",
+            "topic": text[:80],
+            "messages": [msg],
+            "last_active": datetime.now().isoformat(),
+        }
+        return thread, [msg]
+
+    # Продолжение существующей ветки — 1 ответ за тик (не залпом,
+    # чтобы разговор тянулся во времени, как реальный Slack-тред).
+    speaker = fair_sample(pool, k=1)[0]
+    person = roster[speaker]
+    context = format_thread_messages(thread["messages"])
+    prompt = f"""
+Вот разговор в одной из веток чата компании:
+{context}
+
+Ответь в тему — согласись, поспорь, добавь деталь, задай вопрос,
+предложи развитие мысли. Коротко (1-3 предложения), как в живом чате.
+"""
+    response = await person.run(prompt)
+    text = response.text.strip()
+    msg = {"who": speaker, "text": text, "time": datetime.now().strftime("%H:%M")}
+    thread["messages"].append(msg)
+    thread["messages"] = thread["messages"][-60:]
+    thread["last_active"] = datetime.now().isoformat()
+    return thread, [msg]
+
+
+async def escalate_if_ready(thread: dict) -> str | None:
+    """Проверяет готовность конкретной ветки и, если да, гонит её через
+    CTO approval -> реализация. Возвращает отдельный отчёт или None."""
+    readiness = await assess_readiness(thread["messages"])
+    if not readiness:
         return None
-    return {"title": title}
+    title = readiness["title"]
+    if is_duplicate(title):
+        print(f"[company_pulse] '{title}' похоже на дубль с task board — не эскалируем")
+        return None
+
+    who = "+".join({m["who"] for m in thread["messages"][-6:]})
+    cto = build_team()["cto"]
+    approved, comment = await cto_approval(
+        f"Company Pulse ({who})", title,
+        "Родилось из живого обсуждения в одной из веток чата компании.",
+        "См. контекст ветки — участники обсуждали конкретный подход.",
+    )
+    verdict_msg = f"🧭 CTO по теме из ветки \"{thread['topic']}\": {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
+    send_telegram_report(verdict_msg)
+
+    if not approved:
+        return verdict_msg
+
+    task_id = add_task(title, f"pulse:{who}", status="in_progress", reason=comment)
+    print(f"[company_pulse] Задача одобрена — запускаем реализацию: {title}")
+
+    if not await sync_repos_or_alert():
+        return verdict_msg
+
+    from workflows.engineering_task import run_engineering_task
+    from workflows.task_board import update_task_status
+
+    engineering_report = await run_engineering_task(title)
+    update_task_status(task_id, "done")
+
+    full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ВЕТКИ \"{thread['topic']}\"\n\n{engineering_report}"
+    send_telegram_report(full)
+    await curate_knowledge(f"Company Pulse → реализовано: {who}", f"{verdict_msg}\n\n{full}")
+    return full
 
 
 async def run_pulse_tick() -> str | None:
-    # Синхронизация ДО обсуждения, не только перед реализацией — иначе
-    # участники чата тоже пытаются звать grep_repo/git_log вслепую и
-    # обсуждение получается менее содержательным. Если синхронизация
-    # не удалась — тихо продолжаем без repo-tools (агенты справятся
-    # чисто текстовым обсуждением), но логируем для видимости.
     try:
         from tools.repo_tools import clone_or_update_repos
         print(clone_or_update_repos())
@@ -158,99 +215,45 @@ async def run_pulse_tick() -> str | None:
         print(f"[company_pulse] Синхронизация репо не удалась (продолжаем без неё): {e}")
 
     roster = build_full_roster()
-    thread = load_thread()
+    threads = load_threads()
 
-    start_new_topic = not thread or random.random() < NEW_TOPIC_CHANCE
-    speakers = await pick_speakers(roster, thread)
-    record_participation(*speakers)
+    n_slots = THREADS_PER_TICK or random.choices([2, 3], weights=[55, 45])[0]
+    excluded: set[str] = set()
+    all_new_messages: list[tuple[str, dict]] = []  # (topic, msg)
+    updated_threads: dict[str, dict] = {t["id"]: t for t in threads}
 
-    context = format_thread(thread)
-    new_messages = []
+    for i in range(n_slots):
+        # Выбираем: продолжить существующую ветку или начать новую.
+        existing = list(updated_threads.values())
+        pick_new = not existing or random.random() < NEW_TOPIC_CHANCE
+        thread = None if pick_new else random.choice(existing)
 
-    for i, name in enumerate(speakers):
-        person = roster[name]
-        is_first_in_tick = i == 0
+        updated_thread, new_msgs = await run_one_thread(roster, thread, excluded)
+        updated_threads[updated_thread["id"]] = updated_thread
+        for m in new_msgs:
+            excluded.add(m["who"])
+            all_new_messages.append((updated_thread["topic"], m))
+            record_participation(m["who"])
 
-        if start_new_topic and is_first_in_tick and not thread:
-            prompt = """
-Ты в общем рабочем чате компании (тред, где все обсуждают систему —
-идеи, наблюдения, "что если", предложения). Тред пока пуст. Начни
-разговор — какая мысль о BLD System реально сейчас тебя занимает?
-Пиши как в живом чате коллег — коротко, естественно, 1-3 предложения,
-без формальных заголовков.
-"""
-        elif start_new_topic and is_first_in_tick:
-            prompt = f"""
-Вот последние сообщения в общем чате компании:
-{context}
+    save_threads(list(updated_threads.values()))
 
-Текущая тема, кажется, исчерпана или ты хочешь поднять что-то новое.
-Начни новую ветку разговора — идея, наблюдение, "что если" о BLD
-System. Коротко, как в живом чате, 1-3 предложения.
-"""
-        else:
-            prompt = f"""
-Вот последние сообщения в общем чате компании:
-{context}
+    if not all_new_messages:
+        return None
 
-Ответь в тему — согласись, поспорь, добавь деталь, задай вопрос,
-предложи развитие мысли. Пиши как в живом чате коллег: коротко (1-3
-предложения), естественно, не как отчёт.
-"""
-        response = await person.run(prompt)
-        text = response.text.strip()
-        msg = {"who": name, "text": text, "time": datetime.now().strftime("%H:%M")}
-        new_messages.append(msg)
-        thread.append(msg)
-        context = format_thread(thread)
+    lines_by_topic: dict[str, list[str]] = {}
+    for topic, m in all_new_messages:
+        lines_by_topic.setdefault(topic, []).append(f"💬 {m['who']}: {m['text']}")
 
-    save_thread(thread)
-
-    telegram_lines = [f"💬 {m['who']}: {m['text']}" for m in new_messages]
-    telegram_message = "\n\n".join(telegram_lines)
+    telegram_message = "\n\n".join(
+        f"📌 {topic}\n" + "\n".join(lines) for topic, lines in lines_by_topic.items()
+    )
     send_telegram_report(telegram_message)
 
-    readiness = await assess_readiness(thread)
-    if readiness:
-        title = readiness["title"]
-        if is_duplicate(title):
-            print("[company_pulse] Похоже на дубль с task board — не эскалируем повторно")
-            return telegram_message
-
-        cto = build_team()["cto"]
-        who = "+".join({m["who"] for m in new_messages})
-        approved, comment = await cto_approval(
-            f"Company Pulse ({who})", title,
-            "Родилось из живого обсуждения в общем чате компании — "
-            "конкретная задача выкристаллизовалась по совокупности "
-            "нескольких реплик, не из одной фразы.",
-            "См. контекст треда — участники обсуждали конкретный подход.",
-        )
-        verdict_msg = f"🧭 CTO по теме из чата: {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
-        send_telegram_report(verdict_msg)
-
-        if approved:
-            task_id = add_task(title, f"pulse:{who}", status="in_progress", reason=comment)
-            print(f"[company_pulse] Задача одобрена — запускаем реализацию: {title}")
-
-            # Защита на уровне кода (не только .yml) — если синхронизация
-            # репозиториев почему-то не прошла (например, шаг в workflow
-            # забыли/сломали), не тратим Review Gate впустую на пустой
-            # diff, а сразу даём понятный алерт.
-            if not await sync_repos_or_alert():
-                return telegram_message
-
-            from workflows.engineering_task import run_engineering_task
-            from workflows.task_board import update_task_status
-
-            engineering_report = await run_engineering_task(title)
-            update_task_status(task_id, "done")
-
-            send_telegram_report(f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ CHAT-ОБСУЖДЕНИЯ\n\n{engineering_report}")
-            await curate_knowledge(
-                f"Company Pulse → реализовано: {who}",
-                f"{telegram_message}\n\n{verdict_msg}\n\n{engineering_report}",
-            )
+    # Проверяем готовность у ВСЕХ веток, что получили сообщение в этот
+    # тик (не только у одной, как раньше) — каждая независима.
+    touched_thread_ids = {tid for tid, t in updated_threads.items() if t["topic"] in lines_by_topic}
+    for tid in touched_thread_ids:
+        await escalate_if_ready(updated_threads[tid])
 
     return telegram_message
 
