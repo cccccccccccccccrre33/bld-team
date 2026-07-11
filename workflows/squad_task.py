@@ -1,32 +1,44 @@
 """
-Инженерные отряды работают ПАРАЛЛЕЛЬНО над РАЗНЫМИ задачами — это и
-задействует специалистов, которые раньше почти не участвовали в
-реальной работе с кодом, и увеличивает пропускную способность вдвое.
+Инженерные отряды работают ПАРАЛЛЕЛЬНО над РАЗНЫМИ задачами.
 
-Если для отряда явно передана задача — он берётся за неё. Если нет —
-лид отряда сам сканирует код в своей зоне ответственности (domain_keywords)
-и находит проблему сам, как и агент-скаут в других режимах.
+Автономный цикл (workflows/squad_autonomous.py дальше по коду):
+1. Отряд сканирует свою зону, учитывая общую доску задач (не дублирует
+   то, что уже в работе/сделано другим отрядом).
+2. Составляет ПРЕДЛОЖЕНИЕ (что/почему/как) — не сразу пишет код.
+3. Если задача рискованная (миграции, breaking changes) — реальное
+   одобрение CTO обязательно. Если нет — отряд решает сам.
+4. Выполняет, обновляет доску задач.
 """
 
 import asyncio
+from datetime import datetime
 
 from agents.engineering import build_specialist_pool
 from agents.squads import SQUADS
+from config.client_factory import get_chat_client
+from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo
-from workflows._common import ask
+from workflows._common import load_task_board, save_task_board_entry
 from workflows.engineering_task import run_engineering_task
 
-# Модель для самостоятельного поиска проблемы, если отряду не дали
-# явную задачу — используем ту же лёгкую модель, что и agenda_setter
-# совета директоров (agenda_setter реально копается в коде).
-from config.models import BOARD_MODEL_ASSIGNMENTS
-from config.client_factory import get_chat_client
+RISK_KEYWORDS = [
+    "миграц", "удалить", "удаление", "breaking", "переписать полностью",
+    "критичн", "необратим", "схему бд", "схема бд", "production",
+    "прод базу", "изменить api", "сломает", "несовместим",
+]
 
 
-async def find_squad_problem(squad_key: str) -> str:
+def needs_approval(proposal_text: str) -> bool:
+    """Низкий риск — отряд решает сам. Высокий риск (миграции, breaking
+    changes, необратимые изменения) — нужно реальное одобрение CTO."""
+    lowered = proposal_text.lower()
+    return any(kw in lowered for kw in RISK_KEYWORDS)
+
+
+async def find_squad_problem(squad_key: str, recent_context: str = "") -> str:
     """Лид отряда сам сканирует код в своей зоне (domain_keywords) и
-    формулирует конкретную задачу — используется, когда отряду не
-    передали явную задачу извне."""
+    формулирует конкретную задачу. Учитывает доску задач, чтобы не
+    предлагать то, что уже в работе или недавно сделано."""
     squad = SQUADS[squad_key]
     domain_hint = ", ".join(squad["domain_keywords"][:6])
 
@@ -37,17 +49,61 @@ async def find_squad_problem(squad_key: str) -> str:
         tools=[git_log, grep_repo],
     )
 
+    board_note = (
+        f"\nУже в работе/недавно сделано (не предлагай то же самое, если "
+        f"это ещё актуально):\n{recent_context}\n" if recent_context else ""
+    )
+
     prompt = f"""
 Ты ищешь задачу для {squad['label']} — зона ответственности этой
 команды: {domain_hint}.
-
+{board_note}
 Посмотри git_log и grep_repo по репозиториям bld-system/bld-panel и
 найди ОДНУ конкретную проблему или улучшение именно в этой зоне
-ответственности. Сформулируй как одну конкретную задачу, 1-2
-предложения, без преамбулы.
+ответственности — новую, не дублирующую то, что уже в работе.
+Сформулируй как одну конкретную задачу, 1-2 предложения, без преамбулы.
 """
     response = await scout_agent.run(prompt)
     return response.text.strip()
+
+
+async def draft_proposal(squad_key: str, task: str) -> str:
+    """Отряд формулирует предложение (что/почему/как) ДО того, как
+    начинает писать код — шаг 'подходят к CTO'."""
+    squad = SQUADS[squad_key]
+    lead = squad["lead_builder"]()
+    prompt = f"""
+Ты нашёл задачу в зоне ответственности своего отряда: {task}
+
+Прежде чем начать реализацию, составь короткое предложение: ЧТО не
+так, ПОЧЕМУ стоит чинить именно сейчас, и КАК именно планируешь
+исправить (план в 2-4 пункта). Не пиши код — только план. 5-8
+предложений, по делу.
+"""
+    response = await lead.run(prompt)
+    return response.text.strip()
+
+
+async def seek_approval(proposal_text: str, squad_label: str) -> tuple[bool, str]:
+    """CTO реально решает, одобрить или нет — не декоративная роль."""
+    from agents.team import build_team
+
+    cto = build_team()["cto"]
+    prompt = f"""
+{squad_label} нашёл задачу, которую относит к рискованным (миграция/
+breaking change/необратимое изменение), и просит твоего одобрения
+прежде чем начинать. Вот их предложение:
+
+{proposal_text}
+
+Оцени: стоит ли им браться за это именно сейчас, реалистичен ли план,
+нет ли более безопасного пути. Заверши явным вердиктом ПЕРВЫМ СЛОВОМ:
+ОДОБРЕНО или ОТКЛОНЕНО — затем 2-3 предложения обоснования.
+"""
+    response = await cto.run(prompt)
+    text = response.text.strip()
+    approved = text.upper().startswith("ОДОБРЕНО")
+    return approved, text
 
 
 async def run_squad_task(squad_key: str, task: str | None = None) -> str:
@@ -61,8 +117,6 @@ async def run_squad_task(squad_key: str, task: str | None = None) -> str:
         print(f"[{squad_key}] Найдена задача: {task}")
 
     lead = squad["lead_builder"]()
-
-    # Пул отряда — только его штатные участники (не весь пул из 13).
     full_pool = build_specialist_pool()
     squad_pool = {name: full_pool[name] for name in squad["member_names"] if name in full_pool}
 
@@ -71,27 +125,65 @@ async def run_squad_task(squad_key: str, task: str | None = None) -> str:
         lead_agent=lead,
         lead_label=f"Squad Lead ({squad['label']})",
         helper_pool=squad_pool,
-        branch_prefix=f"ai-eng-{squad_key}",
     )
     return f"{squad['label']}\n\n{report}"
+
+
+async def run_squad_autonomous_cycle(squad_key: str) -> str:
+    """Полный автономный цикл отряда: сканирует зону (учитывая доску
+    задач), составляет предложение, при необходимости проходит
+    одобрение CTO, выполняет, обновляет доску задач."""
+    squad = SQUADS[squad_key]
+    label = squad["label"]
+
+    board = load_task_board()
+    recent_context = (
+        "\n".join(f"- [{e.get('status')}] {e.get('squad')}: {e.get('task')}" for e in board)
+        or "(доска пока пуста)"
+    )
+
+    task = await find_squad_problem(squad_key, recent_context=recent_context)
+    proposal = await draft_proposal(squad_key, task)
+
+    if needs_approval(proposal):
+        print(f"[{squad_key}] Задача рискованная — запрашиваем одобрение CTO...")
+        approved, verdict = await seek_approval(proposal, label)
+        approval_block = f"🧑‍💼 CTO:\n{verdict}\n\n"
+
+        if not approved:
+            save_task_board_entry({"squad": squad_key, "task": task, "status": "rejected"})
+            return (
+                f"{label}\n\n📋 ПРЕДЛОЖЕНИЕ (требовало одобрения):\n{task}\n\n{proposal}\n\n"
+                f"{approval_block}❌ CTO отклонил — работа не начата."
+            )
+        header = f"{label}\n\n📋 ПРЕДЛОЖЕНИЕ (одобрено CTO):\n{task}\n\n{proposal}\n\n{approval_block}✅ Приступаем.\n\n"
+    else:
+        header = (
+            f"{label}\n\n📋 РЕШЕНИЕ ОТРЯДА (низкий риск — не требует одобрения):\n"
+            f"{task}\n\n{proposal}\n\n"
+        )
+
+    save_task_board_entry({"squad": squad_key, "task": task, "status": "in_progress"})
+    engineering_report = await run_squad_task(squad_key, task)
+    save_task_board_entry({"squad": squad_key, "task": task, "status": "done"})
+
+    return header + engineering_report
 
 
 async def dispatch_squads(tasks_by_squad: dict[str, str | None]) -> list[str]:
     """Запускает оба (или сколько передано) отряда ПАРАЛЛЕЛЬНО.
 
     tasks_by_squad: {"alpha": "задача или None", "bravo": "задача или None"}
-    Если для какого-то отряда task is None — он сам ищет себе задачу
-    в своей зоне ответственности (см. find_squad_problem).
+    Если для какого-то отряда task is None — он сам ищет себе задачу.
     """
     coros = [run_squad_task(squad_key, task) for squad_key, task in tasks_by_squad.items()]
     return await asyncio.gather(*coros)
 
 
 def task_spans_both_domains(task: str) -> bool:
-    """True, если задача реально задевает зоны ОБОИХ отрядов (например
-    'надёжность БД под нагрузкой') — в этом случае их лучше не пускать
-    параллельно на разные ветки (риск рассинхрона), а провести эстафету
-    на одной ветке."""
+    """True, если задача реально задевает зоны ОБОИХ отрядов — тогда
+    их лучше не пускать параллельно на разные ветки (риск рассинхрона),
+    а провести эстафету на одной ветке."""
     lowered = task.lower()
     alpha_hit = any(kw in lowered for kw in SQUADS["alpha"]["domain_keywords"])
     bravo_hit = any(kw in lowered for kw in SQUADS["bravo"]["domain_keywords"])
@@ -101,19 +193,16 @@ def task_spans_both_domains(task: str) -> bool:
 async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> str:
     """Оба отряда работают НАД ОДНОЙ задачей ПОСЛЕДОВАТЕЛЬНО на одной
     ветке — каждый берёт свою часть, второй продолжает поверх первого.
-    Никакого риска рассинхрона: одна ветка, чёткая передача эстафеты,
-    единый Review Gate в конце.
     """
-    from datetime import datetime
-
     from agents.review_gate import run_review_gate
     from tools.repo_tools import commit_and_push, create_branch
-    from workflows.engineering_task import guess_repo, slugify
+    from tools.repo_tools import AI_BRANCH_NAME
+    from workflows.engineering_task import guess_repo
 
     repo_name = guess_repo(task)
-    branch_name = f"ai-eng-relay/{slugify(task)}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    branch_name = AI_BRANCH_NAME
 
-    print(f"[relay] Создаём общую ветку {branch_name} в {repo_name}...")
+    print(f"[relay] Переключаемся на общую ветку {branch_name} в {repo_name}...")
     print(create_branch(repo_name, branch_name))
 
     findings = []
