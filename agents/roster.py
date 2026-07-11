@@ -9,6 +9,7 @@ Engineering Mentor (agents/growth_team.py) сюда НЕ входит — у н�
 
 from agents.architecture_council import build_architect_roster
 from agents.board import build_board
+from agents.engineering_fellows import build_fellows_roster
 from agents.executive_board import build_executive_board
 from agents.expansion_geniuses import build_global_roster as build_expansion_roster
 from agents.global_geniuses import build_global_roster
@@ -30,11 +31,15 @@ CODE_ACCESS_ROLES = {
     "data_platform_architect", "llm_systems_architect", "chief_security_architect",
     "platform_as_code_architect", "realtime_systems_architect",
     "distributed_consensus_architect", "resilience_chaos_architect", "bayesian_architect",
+    "principal_systems_architect", "physics_informed_ml_engineer",
+    "language_compiler_architect", "data_storage_alchemist",
+    "algorithmic_performance_sorcerer", "security_crypto_architect",
+    "formal_correctness_engineer", "embedded_edge_engineer",
 }
 
 
 def build_full_roster() -> dict:
-    """Возвращает dict {role: Agent} со всеми людьми компании (50)."""
+    """Возвращает dict {role: Agent} со всеми людьми компании (58)."""
     roster = {}
     roster.update(build_board())
     roster.update(build_team())
@@ -44,6 +49,7 @@ def build_full_roster() -> dict:
     roster.update(build_growth_roster(can_write=False))
     roster.update(build_expansion_roster(can_write=False))
     roster.update(build_architect_roster(can_write=False))
+    roster.update(build_fellows_roster(can_write=False))
     roster["squad_lead_alpha"] = build_squad_lead_alpha()
     roster["squad_lead_bravo"] = build_squad_lead_bravo()
     return roster
