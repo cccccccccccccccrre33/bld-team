@@ -1,0 +1,55 @@
+name: Breakthrough Proposal
+
+on:
+  schedule:
+    # Раз в 2 дня, 15:00 Киев (12:00 UTC) — НАМЕРЕННО редко: это
+    # дорогой процесс (сканирование + тройной фильтр + возможная
+    # реализация с командой из 2-3 человек). Учитывая бюджет Azure,
+    # частота держится низкой; увеличивай только если видно, что
+    # денег хватает с запасом.
+    - cron: '0 12 */2 * *'
+  workflow_dispatch:
+    inputs:
+      fellow:
+        description: 'Конкретный Fellow (пусто = случайный из 8)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  breakthrough:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Breakthrough Proposal
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          FELLOW="${{ github.event.inputs.fellow }}"
+          if [ -n "$FELLOW" ]; then
+            python main_breakthrough_proposal.py "$FELLOW"
+          else
+            python main_breakthrough_proposal.py
+          fi
