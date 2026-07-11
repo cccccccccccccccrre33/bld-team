@@ -227,3 +227,20 @@ EXPANSION_MODEL_ASSIGNMENTS = {
     "resilience_chaos_architect": _env("MODEL_RESILIENCE_CHAOS_ARCHITECT", "grok-4.3"),
     "bayesian_architect": _env("MODEL_BAYESIAN_ARCHITECT", "gpt-5.4"),
 }
+
+# --- Engineering Fellows Core (agents/engineering_fellows.py) ---
+# 8 "живых легенд" узкой области — Principal/Distinguished/Fellow
+# уровня, каждый создал что-то знаковое своими руками (не просто
+# исследователь). Могут предлагать Breakthrough Proposal — крупные
+# архитектурные прорывы, не мелкие фиксы — фильтруется тройкой
+# Chief Scientist + Chief Architect + CEO (см. workflows/breakthrough_proposal.py).
+FELLOWS_MODEL_ASSIGNMENTS = {
+    "principal_systems_architect": _env("MODEL_FELLOW_SYSTEMS", "gpt-5.5"),
+    "physics_informed_ml_engineer": _env("MODEL_FELLOW_PHYSICS_ML", "gpt-5.4"),
+    "language_compiler_architect": _env("MODEL_FELLOW_COMPILER", "Kimi-K2.7-Code"),
+    "data_storage_alchemist": _env("MODEL_FELLOW_DATA_STORAGE", "DeepSeek-V4-Pro"),
+    "algorithmic_performance_sorcerer": _env("MODEL_FELLOW_PERFORMANCE", "grok-4.3"),
+    "security_crypto_architect": _env("MODEL_FELLOW_SECURITY", "Mistral-Large-3"),
+    "formal_correctness_engineer": _env("MODEL_FELLOW_FORMAL", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "embedded_edge_engineer": _env("MODEL_FELLOW_EMBEDDED", "gpt-5.4-mini"),
+}
