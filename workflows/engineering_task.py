@@ -27,7 +27,7 @@ from agents.review_gate import run_review_gate
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from config.models import BOARD_MODEL_ASSIGNMENTS, EXPANSION_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
-from tools.repo_tools import commit_and_push, create_branch
+from tools.repo_tools import AI_BRANCH_NAME, commit_and_push, create_branch
 from tools.telegram_report import send_telegram_report
 from workflows._common import compile_brief, curate_knowledge, sync_repos_or_alert
 
@@ -103,9 +103,9 @@ async def run_engineering_task(
     ограниченный пул участников отряда.
     """
     repo_name = repo_name or guess_repo(task)
-    branch_name = f"{branch_prefix}/{slugify(task)}-{datetime.now().strftime('%Y%m%d-%H%M')}"
+    branch_name = AI_BRANCH_NAME
 
-    print(f"Создаём ветку {branch_name} в {repo_name}...")
+    print(f"Переключаемся на общую ветку {branch_name} в {repo_name}...")
     print(create_branch(repo_name, branch_name))
 
     lead_model = lead_model or BOARD_MODEL_ASSIGNMENTS.get("lead_engineer", "gpt-5.5")
