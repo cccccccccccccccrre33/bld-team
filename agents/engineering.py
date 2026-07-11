@@ -114,6 +114,7 @@ def build_specialist_pool() -> dict:
     → Performance Engineer, и т.д. — см. SPECIALTY_KEYWORDS в
     agents/global_geniuses.py и agents/specialists.py)."""
     from agents.architecture_council import ARCHITECT_BUILDERS
+    from agents.engineering_fellows import FELLOW_BUILDERS
     from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS
     from agents.global_geniuses import GENIUS_BUILDERS
     from agents.growth_team import GROWTH_BUILDERS
@@ -124,6 +125,7 @@ def build_specialist_pool() -> dict:
     pool.update({name: builder(can_write=True) for name, builder in GROWTH_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in EXPANSION_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in ARCHITECT_BUILDERS.items()})
+    pool.update({name: builder(can_write=True) for name, builder in FELLOW_BUILDERS.items()})
     return pool
 
 
@@ -133,12 +135,13 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     import random
 
     from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
+    from agents.engineering_fellows import SPECIALTY_KEYWORDS as FELLOW_KEYWORDS
     from agents.expansion_geniuses import SPECIALTY_KEYWORDS as EXPANSION_KEYWORDS
     from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
     from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
     from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 
-    all_keywords = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS}
+    all_keywords = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS, **FELLOW_KEYWORDS}
     lowered = lead_summary.lower()
     for name, keywords in all_keywords.items():
         if any(kw in lowered for kw in keywords) and name in pool:
