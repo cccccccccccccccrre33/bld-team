@@ -32,7 +32,7 @@ from agents.team import build_team
 from tools.telegram_report import send_telegram_report
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from workflows._common import ask, curate_knowledge, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, fair_sample, record_participation, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate
 
@@ -81,7 +81,9 @@ def format_thread(thread: list[dict], limit: int = MAX_HISTORY_FOR_CONTEXT) -> s
 async def pick_speakers(roster: dict, thread: list[dict]) -> list[str]:
     """1-3 человека говорят в этот час. Если тред активный — есть шанс,
     что ответит кто-то УЖЕ участвовавший (реалистичнее для продолжения
-    мысли), плюс всегда есть шанс, что подключится кто-то новый."""
+    мысли), плюс всегда есть шанс, что подключится кто-то новый —
+    смещённый в пользу тех, кто дольше всех не участвовал НИГДЕ в
+    компании (общий трекер fair_sample, не только в этом треде)."""
     count = random.choices([2, 3, 4], weights=[40, 40, 20])[0]
     recent_speakers = list({m["who"] for m in thread[-10:]}) if thread else []
 
@@ -91,7 +93,8 @@ async def pick_speakers(roster: dict, thread: list[dict]) -> list[str]:
         if recent_speakers and random.random() < 0.4:
             speakers.append(random.choice(recent_speakers))
         else:
-            speakers.append(random.choice(pool))
+            candidates = [p for p in pool if p not in speakers] or pool
+            speakers.extend(fair_sample(candidates, k=1))
     return speakers
 
 
@@ -159,6 +162,7 @@ async def run_pulse_tick() -> str | None:
 
     start_new_topic = not thread or random.random() < NEW_TOPIC_CHANCE
     speakers = await pick_speakers(roster, thread)
+    record_participation(*speakers)
 
     context = format_thread(thread)
     new_messages = []
