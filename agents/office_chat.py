@@ -17,6 +17,7 @@
 позиция), но тон другой — гораздо более человеческий и неформальный.
 """
 
+from agents._shared_context import RIGOR_MANDATE_LIGHT
 from config.client_factory import get_chat_client
 from config.models import OFFICE_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file
@@ -41,7 +42,7 @@ CONTEXT_PREAMBLE = """
 происходит", а не как протокол.
 """
 
-CHAT_RULES = """
+CHAT_RULES = f"""
 Как вести себя в чате:
 - Говори коротко, как в реальном чате/на кухне — не пиши длинных
   структурированных ответов, 1-4 предложения на реплику это нормально.
@@ -56,6 +57,7 @@ CHAT_RULES = """
 - Не обязательно приходить к единому выводу в конце. Реальные разговоры
   коллег часто просто заканчиваются, когда тема исчерпана.
 - НИКОГДА не пиши код или патчи — только словами, как в живом разговоре.
+{RIGOR_MANDATE_LIGHT}
 """
 
 
