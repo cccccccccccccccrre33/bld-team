@@ -9,12 +9,12 @@ agents/global_geniuses.py), каждый из вуза, ещё не покрыт
 чтобы не раздувать файл, сохраняя ту же глубину персонажа.
 """
 
-from agents._shared_context import load_company_context
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
 from config.client_factory import get_chat_client
 from config.models import EXPANSION_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file, write_file
 
-COMPANY_CONTEXT = load_company_context()
+COMPANY_CONTEXT = load_bld_scope_context()
 READ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
 YOUNG_ENERGY = """
@@ -24,11 +24,12 @@ YOUNG_ENERGY = """
 сеньоров. Слушай старших, но не молчи и не соглашайся автоматически.
 """
 
-NO_CODE_RULE = """
+NO_CODE_RULE = f"""
 ВАЖНО: если участвуешь в обсуждении (не в режиме реализации) —
 НИКОГДА не пиши код, только текстом: что не так, почему, что делать.
 Если тебе явно дали write_file — тогда пиши реальную рабочую
 реализацию.
+{RIGOR_MANDATE}
 """
 
 # (ключ, вуз, специализация, почему для BLD — конкретно и с деталью
