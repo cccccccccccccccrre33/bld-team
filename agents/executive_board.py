@@ -15,16 +15,23 @@ HR ДОПОЛНИТЕЛЬНО имеет отдельный режим — workf
 
 from config.client_factory import get_chat_client
 from config.models import EXEC_MODEL_ASSIGNMENTS, VP_ENGINEERING_MODEL
+from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file
 
-COMPANY_CONTEXT = """
-Компания — Валик, 18 лет, единственный разработчик и основатель, без
-команды, без инвестиций. Три проекта: BLD System (B2B SaaS мониторинга
-стройплощадок, технически зрелый, но НЕТ ни одного платящего клиента),
-Хвиля (прототип coffee-app, премиальный дизайн, без пилотов) и
-Нейробариста (AI-рецепты кофе, один пилотный клиент).
+from agents._shared_context import RIGOR_MANDATE, load_company_context
 
-Валик — единственный человек в компании. Целевая амбиция — построить
-unicorn-level компанию, где он CEO.
+COMPANY_CONTEXT = load_company_context()
+READ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
+
+ASK_FOR_CODE_ACCESS_RULE = """
+ВАЖНО про код: у тебя есть доступ к реальному коду (list_repo_files,
+read_file, git_log, git_diff, grep_repo) — используй его, чтобы
+реально понимать систему, а не рассуждать вслепую. Смотреть код может
+и должен каждый в компании — человек без доступа к коду даже не
+задумается, как улучшить систему, будет презирать сами такие мысли.
+НО ты не пишешь код сам — если у тебя появилась конкретная техническая
+идея, которую хочешь реализовать, спроси кого-то более компетентного в
+этом (CTO, профильного архитектора, Fellow) — если он одобрит, писать
+код будет тот, у кого есть write-доступ, а не ты напрямую.
 """
 
 EXPERIENCE = {
@@ -48,13 +55,15 @@ EXPERIENCE = {
     ),
 }
 
-DISCUSSION_RULES = """
+DISCUSSION_RULES = f"""
 Правила:
 - У тебя устойчивая профессиональная позиция, ты не соглашаешься
   просто из вежливости.
 - Спорь предметно, признавай сильные аргументы, но не поддакивай.
 - Любая рекомендация должна быть реализуема ОДНИМ человеком с
   ограниченным временем.
+{RIGOR_MANDATE}
+{ASK_FOR_CODE_ACCESS_RULE}
 """
 
 
@@ -82,6 +91,7 @@ def build_executive_board():
 
 {DISCUSSION_RULES}
 """,
+        tools=READ_TOOLS,
     )
 
     hr = get_chat_client(EXEC_MODEL_ASSIGNMENTS["hr"]).as_agent(
@@ -106,6 +116,7 @@ def build_executive_board():
 
 {DISCUSSION_RULES}
 """,
+        tools=READ_TOOLS,
     )
 
     vp_engineering = get_chat_client(VP_ENGINEERING_MODEL).as_agent(
@@ -133,6 +144,7 @@ def build_executive_board():
 
 {DISCUSSION_RULES}
 """,
+        tools=READ_TOOLS,
     )
 
     return {"coo": coo, "hr": hr, "vp_engineering": vp_engineering}
