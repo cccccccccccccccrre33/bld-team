@@ -18,7 +18,7 @@ workflows/breakthrough_proposal.py. После одобрения Fellow соб�
 оставаясь техническим лидером, а не менеджером.
 """
 
-from agents._shared_context import load_bld_scope_context
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
 from config.client_factory import get_chat_client
 from config.models import FELLOWS_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file, write_file
@@ -26,11 +26,12 @@ from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read
 COMPANY_CONTEXT = load_bld_scope_context()
 READ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-NO_CODE_RULE = """
+NO_CODE_RULE = f"""
 ВАЖНО: если ты участвуешь в обсуждении (не в режиме реализации) —
 НИКОГДА не пиши код, только текстом: что не так, почему, что делать.
 Если тебе явно дали write_file — тогда пиши реальную рабочую
 реализацию, а не текст об этом.
+{RIGOR_MANDATE}
 """
 
 FELLOW_ETHOS = """
