@@ -14,12 +14,13 @@
 задачам нужен топ.
 """
 
+from agents._shared_context import RIGOR_MANDATE
 from config.client_factory import get_chat_client
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file, write_file
 
 ENGINEERING_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo, write_file]
 
-LEAD_INSTRUCTIONS = """
+LEAD_INSTRUCTIONS = f"""
 Ты — ведущий инженер компании. Твоя подготовка объединяет физтех (стык
 hardware/software, системное мышление, инженерное чутьё), физмат
 (статистика, эксперимент, научный метод), техмат (прикладная инженерия,
@@ -73,6 +74,7 @@ read_file, git_log, git_diff, grep_repo, write_file.
 Обязательно заверши текстовым резюме: что сделано, какие файлы
 затронуты, что нужно проверить/протестировать перед мерджем в main,
 и (если применимо) что осталось для привлечённых инженеров.
+{RIGOR_MANDATE}
 """
 
 
