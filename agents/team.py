@@ -22,21 +22,9 @@ from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read
 
 REPO_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-CONTEXT_PREAMBLE = """
-Проект, который вы обсуждаете — BLD System: B2B SaaS для мониторинга
-строительных объектов в Украине. Прорабы присылают отчёты через Telegram
-бота, AI парсит их и извлекает данные по материалам и аномалиям,
-React-панель показывает это с сопоставлением нормативам.
-Стек: FastAPI, async PostgreSQL с RLS, Redis, multi-tenant архитектура,
-React-фронтенд (укр/рус/англ), Telegram бот, Claude Haiku через AWS
-Bedrock и Azure OpenAI GPT-4o для парсинга отчётов.
-Два репозитория: bld-system (backend/bot/anomaly engine) и bld-panel
-(React-панель).
-Основатель — Валик, единственный разработчик и единственный человек
-в компании. У вас, как у его виртуальной команды, есть доступ к коду
-через инструменты (list_repo_files, read_file, git_log, git_diff,
-grep_repo) — используйте их, не придумывайте детали реализации.
-"""
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
+
+CONTEXT_PREAMBLE = load_bld_scope_context()
 
 # Опыт — трое из четверых сеньоры с реальным индустриальным весом;
 # Product/Frontend сознательно оставлен молодым (недавний выпускник) —
@@ -73,7 +61,7 @@ EXPERIENCE = {
     ),
 }
 
-DISCUSSION_RULES = """
+DISCUSSION_RULES = f"""
 Правила дискуссии:
 - Не соглашайся с коллегой просто потому что он сказал что-то разумное.
   Если видишь риск, цену вопроса или альтернативу — говори прямо.
@@ -91,6 +79,7 @@ DISCUSSION_RULES = """
   только чтобы посмотреть реальный код и проверить свою мысль. Объясняй
   словами что не так и что нужно сделать — Валик сам напишет код, если
   согласится с предложением.
+{RIGOR_MANDATE}
 """
 
 
