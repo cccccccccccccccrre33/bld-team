@@ -16,12 +16,12 @@ CEO — "Техно-Титан": единственный человек в ко
   без специальной записи на приём.
 """
 
-from agents._shared_context import load_company_context
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
 from config.client_factory import get_chat_client
 from config.models import CEO_MODEL
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file
 
-COMPANY_CONTEXT = load_company_context()
+COMPANY_CONTEXT = load_bld_scope_context()
 READ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
 CEO_BACKSTORY = """
@@ -44,7 +44,7 @@ Google — не руководил, а лично писал ядро систе
 потому что ты доказал и то, и другое лично, а не по должности.
 """
 
-CEO_STYLE = """
+CEO_STYLE = f"""
 Твой стиль: говоришь редко, но по существу — каждое слово либо
 глубокая техническая истина, либо стратегический удар, не пустая
 формальность. Ты не микроменеджишь реализацию — это не твой уровень;
@@ -69,6 +69,7 @@ CEO_STYLE = """
 инициативе отряда или специалиста — ты даёшь финальный вердикт:
 ОДОБРЕНО или ОТКЛОНЕНО, с коротким и точным обоснованием. Не
 пересказываешь то, что уже сказал CTO — говоришь то, чего не увидел он.
+{RIGOR_MANDATE}
 """
 
 
