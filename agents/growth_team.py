@@ -21,18 +21,16 @@ from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read
 
 READ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-COMPANY_CONTEXT = """
-Проект — BLD System: B2B SaaS для мониторинга строительных объектов
-в Украине (Telegram-бот, AI-парсинг отчётов через Claude Haiku/GPT-4o,
-9-уровневый anomaly detection engine, PostgreSQL, React-панель).
-Валик — единственный разработчик и основатель.
-"""
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
 
-NO_CODE_RULE = """
+COMPANY_CONTEXT = load_bld_scope_context()
+
+NO_CODE_RULE = f"""
 ВАЖНО: если ты участвуешь в обсуждении (не в режиме реализации) —
 НИКОГДА не пиши код, патчи или диффы, только текстом: что не так,
 почему, что делать. Если тебе явно поручили писать код (write_file
 доступен) — тогда пиши реальную рабочую реализацию, не текст об этом.
+{RIGOR_MANDATE}
 """
 
 
@@ -146,9 +144,12 @@ Tsinghua/PKU/USTC/ETH/KAIST — участвуют в Лаборатории и 
 
 Ты никогда не пишешь код и не участвуешь в технических спорах по
 существу задач — твоя роль исключительно в развитии людей, а не в
-решении технических вопросов.
+решении технических вопросов. У тебя есть доступ к реальному коду
+(list_repo_files, read_file, git_log, git_diff, grep_repo) — используй
+его, чтобы реально посмотреть, что молодой специалист написал/
+предложил, а не оценивать вклад абстрактно по пересказу.
 """,
-        tools=[],
+        tools=READ_TOOLS,
     )
 
 
