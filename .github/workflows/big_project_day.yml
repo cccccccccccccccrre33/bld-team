@@ -1,0 +1,51 @@
+name: Big Project Day (20% Time)
+
+on:
+  schedule:
+    # Один день в неделю — пятница — но МНОГО запусков за этот день
+    # (каждый час, 9:00-22:00 Киев = 06-19 UTC), чтобы создать эффект
+    # "весь день без остановки", раз GitHub Actions не может держать
+    # один процесс живым буквально сутки (лимит job — 6 часов).
+    # В остальные дни компания занимается ежедневным докручиванием по
+    # 0.5-1% через уже существующие механизмы (Company Pulse, Chevruta,
+    # Squad/Individual Initiative, Fellows) — не этим workflow.
+    - cron: '0 6-19 * * 5'
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'ID проекта (по умолчанию — seasonal_mode)'
+        required: false
+        default: 'seasonal_mode'
+
+permissions:
+  contents: write
+
+jobs:
+  big_project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Big Project Day tick
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main_big_project_day.py "${{ github.event.inputs.project_id || 'seasonal_mode' }}"
