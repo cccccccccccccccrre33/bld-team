@@ -40,13 +40,9 @@ from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read
 
 READ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-COMPANY_CONTEXT = """
-Проект — BLD System: B2B SaaS для мониторинга строительных объектов
-в Украине (Telegram-бот, AI-парсинг отчётов, 9-уровневый anomaly
-detection engine, React-панель). Валик — единственный разработчик и
-основатель. У тебя есть реальный доступ к коду через tools — используй
-его по-настоящему, не выдумывай детали.
-"""
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
+
+COMPANY_CONTEXT = load_bld_scope_context()
 
 # Это "молодые" в компании — недавние выпускники, не 20-летние
 # ветераны индустрии (в отличие от совета директоров, код-ревью команды
@@ -68,11 +64,12 @@ YOUNG_ENERGY = """
 что рост нужен всем, и иногда свежий взгляд ценнее 20 лет привычки.
 """
 
-NO_CODE_RULE = """
+NO_CODE_RULE = f"""
 ВАЖНО: если ты участвуешь в обсуждении (не в режиме реализации) —
 НИКОГДА не пиши код, патчи или диффы, только текстом: что не так,
 почему, что делать. Если тебе явно поручили писать код (write_file
 доступен) — тогда пиши реальную рабочую реализацию, не текст об этом.
+{RIGOR_MANDATE}
 """
 
 
