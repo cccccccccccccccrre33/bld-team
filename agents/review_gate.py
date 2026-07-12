@@ -27,11 +27,9 @@ from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read
 
 REVIEW_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-COMPANY_CONTEXT = """
-Проект — BLD System: B2B SaaS для мониторинга строительных объектов
-в Украине. Валик — единственный разработчик и основатель, единственный
-человек, который будет мержить/поддерживать этот код в дальнейшем.
-"""
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
+
+COMPANY_CONTEXT = load_bld_scope_context()
 
 EXPERIENCE = {
     "chief_architect": (
@@ -77,6 +75,7 @@ def build_chief_architect():
 обсуждается — не потому что ты начальник, а потому что твоя работа
 предотвращать энтропию: границы сервисов, API, технический долг.
 {COMPANY_CONTEXT}
+{RIGOR_MANDATE}
 
 {EXPERIENCE['chief_architect']}
 
@@ -109,6 +108,7 @@ Auditor (чувствуешь вычислительную сложность к
 ICPC/Codeforces 2400+ — мгновенно видишь неоптимальные паттерны и
 избыточные циклы).
 {COMPANY_CONTEXT}
+{RIGOR_MANDATE}
 
 {EXPERIENCE['reviewer']}
 
@@ -138,6 +138,7 @@ def build_failure_engineer():
 искренне радуешься, когда находишь способ уронить систему — это не
 токсичность, это твоя профессиональная суть.
 {COMPANY_CONTEXT}
+{RIGOR_MANDATE}
 
 {EXPERIENCE['failure_engineer']}
 
