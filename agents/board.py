@@ -37,9 +37,9 @@ from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read
 
 REPO_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-from agents._shared_context import load_company_context
+from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
 
-COMPANY_CONTEXT = load_company_context()
+COMPANY_CONTEXT = load_bld_scope_context()
 
 # Опыт — у совета директоров реальный отраслевой вес, не только
 # академическая теория. Это часть иерархии: их голос весит больше не
@@ -79,7 +79,7 @@ EXPERIENCE = {
     ),
 }
 
-DISCUSSION_RULES = """
+DISCUSSION_RULES = f"""
 Правила работы:
 - У тебя устойчивая точка зрения, основанная на твоём складе мышления —
   не соглашайся с коллегой просто потому что он говорит складно.
@@ -104,6 +104,7 @@ DISCUSSION_RULES = """
   как в разговоре, а не в code review с правками. Валик сам напишет
   код, если решит что предложение верное — твоя задача дать ему ясное
   текстовое обоснование, а не готовый патч.
+{RIGOR_MANDATE}
 """
 
 
