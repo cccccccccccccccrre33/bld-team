@@ -5,19 +5,36 @@
 в твоём Azure AI Foundry проекте (как ты их назвал при деплое модели).
 
 История: изначально тут были смешаны сторонние модели (grok-4.3,
-DeepSeek-V4-Pro) с настоящими Azure OpenAI (gpt-5.4, gpt-5.5). На
-практике сторонние модели через маркетплейс Foundry падают с 500-й
-ошибкой — библиотека agent-framework обращается к ним через т.н.
-Responses API, который сторонние модели (не-OpenAI) в большинстве
-случаев не поддерживают, только настоящие Azure OpenAI deployment'ы.
-Поэтому теперь везде используются ТОЛЬКО модели линейки gpt-5.x —
-разного веса, чтобы держать баланс между качеством и стоимостью.
+DeepSeek-V4-Pro и т.п.) с настоящими Azure OpenAI (gpt-5.4, gpt-5.5).
+Была проблема: сторонние модели через маркетплейс Foundry иногда падали
+с 500-й ошибкой, т.к. agent-framework обращается к ним через Responses
+API, который не все сторонние (не-OpenAI) модели одинаково хорошо
+поддерживают.
+
+ВАЖНО НЕ ПОТЕРЯТЬ: ниже по файлу сторонние модели (DeepSeek-V4-Flash/Pro,
+Llama-4-Maverick, Mistral-Large-3, grok-4.3, Kimi-K2.7-Code) всё ещё
+активно используются во многих ролях — то есть проблема выше либо была
+решена, либо она затрагивала не все сценарии. Если 500-е ошибки
+периодически всплывают, скорее всего именно на этих ролях — стоит
+свериться с реальным логом ошибок, а не полагаться только на этот
+комментарий.
+
+Отдельное ограничение по квотам: у каждого стороннего провайдера
+(DeepSeek-V4-Flash/Pro, Llama-4-Maverick, Mistral-Large-3, grok-4.3,
+Kimi-K2.7-Code) — всего 4 запроса квоты против 800 у gpt-моделей.
+Поэтому роли на них специально РАЗМАЗАНЫ по всем шести провайдерам
+примерно поровну, а не сконцентрированы на одном-двух — так суммарная
+доступная пропускная способность используется полнее. gpt-5.5 при этом
+намеренно сильно сужен — он остаётся только на реальных точках
+финального решения (CEO, CTO, Chief Scientist, Chief Architect, Лид-
+инженер), а не на каждой мало-мальски важной роли.
 
 Уровни нагрузки (от дорогого к дешёвому):
-- gpt-5.5       — самый дорогой и сильный. Только для ролей, где
-                  реально нужна максимальная глубина рассуждений.
-- gpt-5.4       — сильная модель, дешевле 5.5. Для ролей с серьёзной
-                  содержательной нагрузкой, но не топовых.
+- gpt-5.5       — самый дорогой и сильный. Только для 4-5 ролей с правом
+                  реального финального решения (см. выше).
+- gpt-5.4       — сильная модель, дешевле 5.5, с высокой квотой (800).
+                  Для ролей с серьёзной нагрузкой, но не топовых, и там,
+                  где важна доказанная надёжность tool-calling (write_file).
 - gpt-5.4-mini  — средний уровень. Для ролей, где нужна вменяемость,
                   но не крайняя строгость.
 - gpt-5.4-nano  — самый дешёвый. Для чисто роутинговых/технических
@@ -25,6 +42,11 @@ Responses API, который сторонние модели (не-OpenAI) в �
 - gpt-5.2  — отдельно для ролей, которым нужно РЕАЛЬНО читать код
                   через tools (git_log, grep_repo) — работает с этим
                   надёжно и дешевле топовых моделей.
+- DeepSeek-V4-Flash/Pro, Llama-4-Maverick, Mistral-Large-3, grok-4.3,
+                  Kimi-K2.7-Code — тоже очень сильные модели, дешевле
+                  gpt-5.5, но с низкой квотой (4 запроса каждая) —
+                  используются для read-only/дискуссионных ролей,
+                  размазаны поровну по всем шести, не концентрируются.
 
 Если задеплоишь другие названия — задай через переменные окружения
 (см. .env.example), дефолты ниже менять не обязательно.
@@ -87,9 +109,11 @@ OFFICE_MODEL_ASSIGNMENTS = {
 
 # --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
 # Чисто техническая экспертиза по BLD System. Мехмат — самый строгий
-# теоретик, ему топовая модель; остальным — по убыванию нагрузки.
+# теоретик среди совета, но gpt-5.5 теперь зарезервирован только за
+# CEO/CTO/Chief Scientist/Chief Architect/Lead Engineer (реальные
+# точки финального решения) — здесь сильная модель, но не топовая.
 BOARD_MODEL_ASSIGNMENTS = {
-    "mekhmat": _env("MODEL_BOARD_MEKHMAT", "gpt-5.5"),
+    "mekhmat": _env("MODEL_BOARD_MEKHMAT", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
     "fiztech": _env("MODEL_BOARD_FIZTECH", "gpt-5.4"),
     "fizmat": _env("MODEL_BOARD_FIZMAT", "gpt-5.4"),
     "tehmat": _env("MODEL_BOARD_TEHMAT", "gpt-5.4-mini"),
@@ -130,8 +154,8 @@ EXEC_MODEL_ASSIGNMENTS = {
 # Архетипы по мировым топ-вузам — используются И в общем ростере
 # (Лаборатория, HR 1-на-1), И как пул специалистов, которых лид-инженер
 # может "нанять" под конкретную задачу (agents/engineering.py).
-# gpt-5.5 сознательно не раздаём сюда — он остаётся эксклюзивным для
-# Мехмата (совет) и Лид-инженера, чтобы не взорвать косты.
+# gpt-5.5 сознательно не раздаём сюда — он остаётся только за CEO, CTO,
+# Chief Scientist, Chief Architect и Лид-инженером, чтобы не взорвать косты.
 GLOBAL_MODEL_ASSIGNMENTS = {
     "mit": _env("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
     "caltech": _env("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
@@ -184,9 +208,11 @@ TELEGRAM_SUMMARIZER_MODEL = _env("MODEL_TELEGRAM_SUMMARIZER", "DeepSeek-V4-Flash
 # Постоянные команды (не ad-hoc подбор) — работают параллельно над
 # РАЗНЫМИ задачами. Лиды на проверенных gpt-моделях (эти роли реально
 # пишут код через write_file — надёжность tool-calling тут важнее
-# экспериментов с новыми провайдерами).
-SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.5")
-SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.5")
+# экспериментов с новыми провайдерами). gpt-5.5 им больше не нужен —
+# 5.4 достаточно силён для этого уровня задач, а 5.5 бережём для ролей
+# с правом финального решения.
+SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
+SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
 
 # --- Рост команды (agents/growth_team.py) ---
 # 4 новые роли под конкретные пробелы: эксплуатация AI-пайплайна,
@@ -220,7 +246,7 @@ EXPANSION_MODEL_ASSIGNMENTS = {
     "data_integrity_architect": _env("MODEL_DATA_INTEGRITY_ARCHITECT", "gpt-5.4"),
     "data_platform_architect": _env("MODEL_DATA_PLATFORM_ARCHITECT", "grok-4.3"),
     "llm_systems_architect": _env("MODEL_LLM_SYSTEMS_ARCHITECT", "gpt-5.4"),
-    "chief_security_architect": _env("MODEL_CHIEF_SECURITY_ARCHITECT", "gpt-5.5"),
+    "chief_security_architect": _env("MODEL_CHIEF_SECURITY_ARCHITECT", "Mistral-Large-3"),
     "platform_as_code_architect": _env("MODEL_PLATFORM_AS_CODE_ARCHITECT", "Mistral-Large-3"),
     "realtime_systems_architect": _env("MODEL_REALTIME_SYSTEMS_ARCHITECT", "gpt-5.4-mini"),
     "distributed_consensus_architect": _env("MODEL_DISTRIBUTED_CONSENSUS_ARCHITECT", "DeepSeek-V4-Pro"),
@@ -235,7 +261,7 @@ EXPANSION_MODEL_ASSIGNMENTS = {
 # архитектурные прорывы, не мелкие фиксы — фильтруется тройкой
 # Chief Scientist + Chief Architect + CEO (см. workflows/breakthrough_proposal.py).
 FELLOWS_MODEL_ASSIGNMENTS = {
-    "principal_systems_architect": _env("MODEL_FELLOW_SYSTEMS", "gpt-5.5"),
+    "principal_systems_architect": _env("MODEL_FELLOW_SYSTEMS", "Kimi-K2.7-Code"),
     "physics_informed_ml_engineer": _env("MODEL_FELLOW_PHYSICS_ML", "gpt-5.4"),
     "language_compiler_architect": _env("MODEL_FELLOW_COMPILER", "Kimi-K2.7-Code"),
     "data_storage_alchemist": _env("MODEL_FELLOW_DATA_STORAGE", "DeepSeek-V4-Pro"),
