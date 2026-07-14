@@ -149,7 +149,17 @@
       "how": "",
       "created": "14.07.2026 20:18",
       "cto_comment": ""
+    },
+    {
+      "id": "pulse:mekhmat+coo+cto-20260714235216",
+      "title": "Ввести release-gate: для каждого нового producer/поля в risk/review пайплайне явно задокументировать и реализовать правило, может ли оно попадать в owner-visible payload, через какой нормализатор оно проходит, и добавить автоматический тест, гарантирующий отсутствие утечек dry-run/internal precision сигналов в owner-visible контракт.",
+      "squad": "pulse:mekhmat+coo+cto",
+      "status": "in_progress",
+      "reason": "Это не дублирует текущие задачи: хевруты обсуждают UX/uncertainty, а здесь нужен инженерный release-gate на главный инвариант системы — dry-run/internal/review сигналы не должны протечь в owner-visible payload. В коде уже есть реальные boundary-точки (`normalize_precision_deviation_response`, `build_owner_insights_payload`) и тесты вокруг них, поэтому задача реалистична, если делать её узко: явный contract/allowlist для новых producer/полей + regression-тест на отсутствие internal-only токенов/полей. Не превращать это в бюрократическую платформу; критерий готовности простой — новый owner-visible producer без указанного нормализатора и теста не проходит review gate.",
+      "how": "",
+      "created": "14.07.2026 23:52",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "14.07.2026 20:18"
+  "last_updated": "14.07.2026 23:52"
 }
