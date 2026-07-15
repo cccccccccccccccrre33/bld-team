@@ -1,8 +1,12 @@
 """
 Индивидуальная инициатива — не только 2 фиксированных отряда. ЛЮБОЙ
-человек компании с реальным доступом к коду (16 специалистов + 10
-архитекторов = 26 человек) может сам заметить проблему в СВОЕЙ
-специализации и предложить фикс.
+человек компании с реальным доступом к коду (9 глобальных гениев + 4
+специалиста + 3 growth-роли + 10 expansion-гениев + 10 архитекторов +
+150 Global Elite I/II = 186 человек) может сам заметить проблему в
+СВОЕЙ специализации и предложить фикс. (Старая цифра "26" в этом же
+комментарии была неточной ещё до Global Elite — не учитывала 10
+expansion-гениев; посчитано заново по факту содержимого словарей, а не
+по старой формуле.)
 
 ВАЖНО: решение никогда не принимается одним человеком в одиночку, даже
 если он сам уверен в своей области. Каждая инициатива проходит
@@ -25,6 +29,10 @@ import sys
 from agents.architecture_council import ARCHITECT_BUILDERS, ARCHITECT_LABELS
 from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
 from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS, GLOBAL_LABELS as EXPANSION_LABELS
+from agents.global_elite import ELITE1_BUILDERS, ELITE1_LABELS
+from agents.global_elite import ELITE1_SPECIALTY_KEYWORDS
+from agents.global_elite_100 import ELITE2_BUILDERS, ELITE2_LABELS
+from agents.global_elite_100 import ELITE2_SPECIALTY_KEYWORDS
 from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
@@ -35,8 +43,14 @@ from workflows.cto_approval import consult, cto_approval
 from workflows.engineering_task import run_engineering_task
 from workflows.task_board import add_task, can_take_more, get_board_summary, is_duplicate, update_task_status
 
-ALL_BUILDERS = {**GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS, **ARCHITECT_BUILDERS}
-ALL_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
+ALL_BUILDERS = {
+    **GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS,
+    **ARCHITECT_BUILDERS, **ELITE1_BUILDERS, **ELITE2_BUILDERS,
+}
+ALL_LABELS = {
+    **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
+    **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS,
+}
 
 # "Молодые" — те же 19 человек, что описаны как "молодые гении" в
 # agents/global_geniuses.py (недавние выпускники) и
@@ -62,20 +76,29 @@ def weighted_pick() -> str:
 
 
 def find_domain_consultant(name: str, title: str, reason: str):
-    """Ищет профильного эксперта (архитектора) для консультации по теме
-    задачи — по совпадению ключевых слов темы с зоной экспертизы
-    архитектора. Исключает самого инициатора (нет смысла "спрашивать
-    себя"). Если совпадений нет — вернёт None, и тогда идём к CTO.
+    """Ищет профильного эксперта для консультации по теме задачи — по
+    совпадению ключевых слов темы с зоной экспертизы. Сначала смотрит
+    среди исходных 10 архитекторов (architecture_council.py, они и были
+    задуманы как "кумиры"-консультанты), затем — среди 150 Global Elite
+    I/II (там зачастую более узко релевантный эксперт, чем любой из
+    10 генералистов-архитекторов). Исключает самого инициатора (нет
+    смысла "спрашивать себя"). Если совпадений нигде нет — вернёт None,
+    и тогда идём к CTO.
 
     Возвращает (consultant_key, consultant_agent, consultant_label)
     или (None, None, None)."""
     text = f"{title} {reason}".lower()
-    for arch_key, keywords in ARCHITECT_KEYWORDS.items():
-        if arch_key == name:
-            continue
-        if any(kw in text for kw in keywords):
-            builder = ARCHITECT_BUILDERS[arch_key]
-            return arch_key, builder(can_write=False), ARCHITECT_LABELS[arch_key]
+    for keywords_dict, builders_dict, labels_dict in (
+        (ARCHITECT_KEYWORDS, ARCHITECT_BUILDERS, ARCHITECT_LABELS),
+        (ELITE1_SPECIALTY_KEYWORDS, ELITE1_BUILDERS, ELITE1_LABELS),
+        (ELITE2_SPECIALTY_KEYWORDS, ELITE2_BUILDERS, ELITE2_LABELS),
+    ):
+        for key, keywords in keywords_dict.items():
+            if key == name:
+                continue
+            if any(kw in text for kw in keywords):
+                builder = builders_dict[key]
+                return key, builder(can_write=False), labels_dict[key]
     return None, None, None
 
 
