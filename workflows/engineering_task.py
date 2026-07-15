@@ -2,7 +2,10 @@
 Инженерная команда реально пишет и коммитит код по задаче, поставленной
 советом директоров или правлением. Работает в ОТДЕЛЬНОЙ ветке —
 НИКОГДА не пушит напрямую в main (это защищено на уровне
-tools/repo_tools.py). Валик сам ревьюит ветку и мержит, если согласен.
+tools/repo_tools.py). Мерж в main теперь тоже автоматический — Review
+Gate даёт чистый вердикт → merge_branch_to_main() мержит сам, без
+участия человека. Если вердикт остаётся плохим даже после одной
+переделки — решение уходит к CTO (не к основателю), см. cto_approval().
 
 Ведущий инженер (модель gpt-5.5 по умолчанию) сам решает, справится
 один или нужно привлечь ещё инженеров — без фиксированных сроков,
@@ -27,9 +30,10 @@ from agents.review_gate import run_review_gate
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from config.models import BOARD_MODEL_ASSIGNMENTS, EXPANSION_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
-from tools.repo_tools import AI_BRANCH_NAME, commit_and_push, create_branch
+from tools.repo_tools import AI_BRANCH_NAME, commit_and_push, create_branch, merge_branch_to_main
 from tools.telegram_report import send_telegram_report
 from workflows._common import compile_brief, curate_knowledge, sync_repos_or_alert
+from workflows.cto_approval import cto_approval
 
 ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS}
 ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
@@ -71,10 +75,10 @@ def find_matching_specialists(text: str, max_specialists: int = 2) -> list[str]:
 # Иерархия принятия решений: у Review Gate РЕАЛЬНОЕ право вето, не
 # просто совещательный голос. Если хотя бы один из трёх ревьюеров
 # выносит серьёзный негативный вердикт — лид-инженер ОБЯЗАН
-# переделать, прежде чем отчёт уйдёт Валику. Ограничено ОДНИМ циклом
-# переделки, чтобы не уйти в бесконечный цикл и не разорить бюджет —
-# если после переделки всё ещё есть проблемы, это уже честно
-# показывается Валику как есть, а не скрывается.
+# переделать, прежде чем изменения смержатся в main. Ограничено ОДНИМ
+# циклом переделки, чтобы не уйти в бесконечный цикл и не разорить
+# бюджет — если после переделки всё ещё есть проблемы, решение, мержить
+# ли всё равно, отдаётся CTO (см. cto_approval), а не основателю.
 NEGATIVE_VERDICT_MARKERS = ["ТРЕБУЕТ ПЕРЕДЕЛКИ", "REJECT", "ЛОМАЕТСЯ ЛЕГКО"]
 
 
@@ -209,6 +213,37 @@ Review Gate (Chief Architect / Reviewer / Failure Engineer — все
         )
         review_verdict = review_verdict_2
 
+    # Мерж — БЕЗ участия человека. Если после (максимум одной) переделки
+    # вердикт чист — мержим автоматически. Если всё ещё есть проблемы —
+    # решение принимает CTO (эскалирует к CEO сам, если не уверен), а не
+    # основатель: см. workflows/cto_approval.py.
+    if not needs_rework(review_verdict):
+        print("Review Gate: вердикт чист — мержим в main автоматически...")
+        merge_result = merge_branch_to_main(repo_name, branch_name, task)
+        print(merge_result)
+        merge_note = f"\n\n{merge_result}"
+    else:
+        print("Review Gate: проблемы остались даже после переделки — решение за CTO...")
+        cto_approved, cto_comment = await cto_approval(
+            squad_label=f"{lead_label} (Review Gate, после переделки)",
+            task_title=task,
+            reason=f"Review Gate не пропустил дважды подряд:\n{review_verdict}",
+            how="Лид уже сделал одну переделку по замечаниям — эскалируем, "
+                "т.к. повторной переделки этот пайплайн не делает (см. NEGATIVE_VERDICT_MARKERS).",
+        )
+        if cto_approved:
+            print(f"CTO решил мержить несмотря на замечания: {cto_comment}")
+            merge_result = merge_branch_to_main(repo_name, branch_name, f"{task} (approved by CTO despite review notes)")
+            print(merge_result)
+            merge_note = f"\n\n🧑‍💼 CTO решил смержить несмотря на замечания: {cto_comment}\n\n{merge_result}"
+        else:
+            print(f"CTO заблокировал мерж: {cto_comment}")
+            merge_note = (
+                f"\n\n🧑‍💼 CTO НЕ дал добро на мерж: {cto_comment}\n\n"
+                f"⚠️ Изменения остаются в ветке {branch_name} — нужна ручная разборка "
+                "(не обязательно основателем, любым, у кого есть контекст по задаче)."
+            )
+
     report = (
         f"👷‍♂️ ИНЖЕНЕРНАЯ ЗАДАЧА ВЫПОЛНЕНА\n\n"
         f"ЗАДАЧА:\n{task}\n\n"
@@ -221,8 +256,7 @@ Review Gate (Chief Architect / Reviewer / Failure Engineer — все
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         + rework_note
         + review_verdict
-        + "\n\n⚠️ Изменения НЕ в main — открой ветку, проверь и смержи сам, "
-        "с учётом вердикта ревью выше."
+        + merge_note
     )
     return report
 
