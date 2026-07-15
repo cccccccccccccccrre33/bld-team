@@ -12,6 +12,8 @@ from agents.board import build_board
 from agents.engineering_fellows import build_fellows_roster
 from agents.executive_board import build_executive_board
 from agents.expansion_geniuses import build_global_roster as build_expansion_roster
+from agents.global_elite import GLOBAL_ELITE_1_KEYS, build_global_elite_1_roster
+from agents.global_elite_100 import GLOBAL_ELITE_2_KEYS, build_global_elite_2_roster
 from agents.global_geniuses import build_global_roster
 from agents.growth_team import build_growth_roster
 from agents.specialists import build_specialist_roster
@@ -35,11 +37,13 @@ CODE_ACCESS_ROLES = {
     "language_compiler_architect", "data_storage_alchemist",
     "algorithmic_performance_sorcerer", "security_crypto_architect",
     "formal_correctness_engineer", "embedded_edge_engineer",
+    *GLOBAL_ELITE_1_KEYS, *GLOBAL_ELITE_2_KEYS,
 }
 
 
 def build_full_roster() -> dict:
-    """Возвращает dict {role: Agent} со всеми людьми компании (58)."""
+    """Возвращает dict {role: Agent} со всеми людьми компании (~209:
+    59 исходных + 50 Global Elite I + 100 Global Elite II)."""
     roster = {}
     roster.update(build_board())
     roster.update(build_team())
@@ -50,6 +54,8 @@ def build_full_roster() -> dict:
     roster.update(build_expansion_roster(can_write=False))
     roster.update(build_architect_roster(can_write=False))
     roster.update(build_fellows_roster(can_write=False))
+    roster.update(build_global_elite_1_roster(can_write=False))
+    roster.update(build_global_elite_2_roster(can_write=False))
     roster["squad_lead_alpha"] = build_squad_lead_alpha()
     roster["squad_lead_bravo"] = build_squad_lead_bravo()
     return roster
