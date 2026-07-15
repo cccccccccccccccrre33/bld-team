@@ -159,7 +159,17 @@
       "how": "",
       "created": "14.07.2026 23:52",
       "cto_comment": ""
+    },
+    {
+      "id": "pulse:ustc+language_compiler_architect+algorithmic_performance_sorcerer-20260715051549",
+      "title": "Составить и зафиксировать явную карту зависимостей между уровнями anomaly engine (DAG): для каждого уровня определить чистые входы/выходы (какие факты читает/пишет) и отметить неявные зависимости/side effects, чтобы выявить реальные зависимости и потенциальные точки параллелизации.",
+      "squad": "pulse:ustc+language_compiler_architect+algorithmic_performance_sorcerer",
+      "status": "in_progress",
+      "reason": "Дублирования на доске не вижу: текущие задачи чинят L9 calibration, ingestion idempotency и owner-visible release-gate, а явной карты зависимостей уровней нет; в коде `anomaly/engine.py` уровни реально запускаются последовательно (`level_1`…`level_9`), но рядом есть shared state/side effects — `AnalysisRun`, supersede старых `AnomalyResult`, trust multiplier, alert creation. Одобряю только как audit/documentation task: зафиксировать DAG входов/выходов/side effects и кандидатов на параллелизацию, без попытки сразу распараллелить engine или переписывать orchestration. Финальный артефакт должен показать, какие уровни математически независимы, а какие связаны через БД/историю/trust/alerts, иначе это превратится в красивую диаграмму без инженерной цены.",
+      "how": "",
+      "created": "15.07.2026 05:15",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "14.07.2026 23:52"
+  "last_updated": "15.07.2026 05:15"
 }
