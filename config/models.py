@@ -5,36 +5,19 @@
 в твоём Azure AI Foundry проекте (как ты их назвал при деплое модели).
 
 История: изначально тут были смешаны сторонние модели (grok-4.3,
-DeepSeek-V4-Pro и т.п.) с настоящими Azure OpenAI (gpt-5.4, gpt-5.5).
-Была проблема: сторонние модели через маркетплейс Foundry иногда падали
-с 500-й ошибкой, т.к. agent-framework обращается к ним через Responses
-API, который не все сторонние (не-OpenAI) модели одинаково хорошо
-поддерживают.
-
-ВАЖНО НЕ ПОТЕРЯТЬ: ниже по файлу сторонние модели (DeepSeek-V4-Flash/Pro,
-Llama-4-Maverick, Mistral-Large-3, grok-4.3, Kimi-K2.7-Code) всё ещё
-активно используются во многих ролях — то есть проблема выше либо была
-решена, либо она затрагивала не все сценарии. Если 500-е ошибки
-периодически всплывают, скорее всего именно на этих ролях — стоит
-свериться с реальным логом ошибок, а не полагаться только на этот
-комментарий.
-
-Отдельное ограничение по квотам: у каждого стороннего провайдера
-(DeepSeek-V4-Flash/Pro, Llama-4-Maverick, Mistral-Large-3, grok-4.3,
-Kimi-K2.7-Code) — всего 4 запроса квоты против 800 у gpt-моделей.
-Поэтому роли на них специально РАЗМАЗАНЫ по всем шести провайдерам
-примерно поровну, а не сконцентрированы на одном-двух — так суммарная
-доступная пропускная способность используется полнее. gpt-5.5 при этом
-намеренно сильно сужен — он остаётся только на реальных точках
-финального решения (CEO, CTO, Chief Scientist, Chief Architect, Лид-
-инженер), а не на каждой мало-мальски важной роли.
+DeepSeek-V4-Pro) с настоящими Azure OpenAI (gpt-5.4, gpt-5.5). На
+практике сторонние модели через маркетплейс Foundry падают с 500-й
+ошибкой — библиотека agent-framework обращается к ним через т.н.
+Responses API, который сторонние модели (не-OpenAI) в большинстве
+случаев не поддерживают, только настоящие Azure OpenAI deployment'ы.
+Поэтому теперь везде используются ТОЛЬКО модели линейки gpt-5.x —
+разного веса, чтобы держать баланс между качеством и стоимостью.
 
 Уровни нагрузки (от дорогого к дешёвому):
-- gpt-5.5       — самый дорогой и сильный. Только для 4-5 ролей с правом
-                  реального финального решения (см. выше).
-- gpt-5.4       — сильная модель, дешевле 5.5, с высокой квотой (800).
-                  Для ролей с серьёзной нагрузкой, но не топовых, и там,
-                  где важна доказанная надёжность tool-calling (write_file).
+- gpt-5.5       — самый дорогой и сильный. Только для ролей, где
+                  реально нужна максимальная глубина рассуждений.
+- gpt-5.4       — сильная модель, дешевле 5.5. Для ролей с серьёзной
+                  содержательной нагрузкой, но не топовых.
 - gpt-5.4-mini  — средний уровень. Для ролей, где нужна вменяемость,
                   но не крайняя строгость.
 - gpt-5.4-nano  — самый дешёвый. Для чисто роутинговых/технических
@@ -42,11 +25,6 @@ Kimi-K2.7-Code) — всего 4 запроса квоты против 800 у g
 - gpt-5.2  — отдельно для ролей, которым нужно РЕАЛЬНО читать код
                   через tools (git_log, grep_repo) — работает с этим
                   надёжно и дешевле топовых моделей.
-- DeepSeek-V4-Flash/Pro, Llama-4-Maverick, Mistral-Large-3, grok-4.3,
-                  Kimi-K2.7-Code — тоже очень сильные модели, дешевле
-                  gpt-5.5, но с низкой квотой (4 запроса каждая) —
-                  используются для read-only/дискуссионных ролей,
-                  размазаны поровну по всем шести, не концентрируются.
 
 Если задеплоишь другие названия — задай через переменные окружения
 (см. .env.example), дефолты ниже менять не обязательно.
@@ -109,9 +87,7 @@ OFFICE_MODEL_ASSIGNMENTS = {
 
 # --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
 # Чисто техническая экспертиза по BLD System. Мехмат — самый строгий
-# теоретик среди совета, но gpt-5.5 теперь зарезервирован только за
-# CEO/CTO/Chief Scientist/Chief Architect/Lead Engineer (реальные
-# точки финального решения) — здесь сильная модель, но не топовая.
+# теоретик, ему топовая модель; остальным — по убыванию нагрузки.
 BOARD_MODEL_ASSIGNMENTS = {
     "mekhmat": _env("MODEL_BOARD_MEKHMAT", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
     "fiztech": _env("MODEL_BOARD_FIZTECH", "gpt-5.4"),
@@ -154,8 +130,8 @@ EXEC_MODEL_ASSIGNMENTS = {
 # Архетипы по мировым топ-вузам — используются И в общем ростере
 # (Лаборатория, HR 1-на-1), И как пул специалистов, которых лид-инженер
 # может "нанять" под конкретную задачу (agents/engineering.py).
-# gpt-5.5 сознательно не раздаём сюда — он остаётся только за CEO, CTO,
-# Chief Scientist, Chief Architect и Лид-инженером, чтобы не взорвать косты.
+# gpt-5.5 сознательно не раздаём сюда — он остаётся эксклюзивным для
+# Мехмата (совет) и Лид-инженера, чтобы не взорвать косты.
 GLOBAL_MODEL_ASSIGNMENTS = {
     "mit": _env("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
     "caltech": _env("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
@@ -208,9 +184,7 @@ TELEGRAM_SUMMARIZER_MODEL = _env("MODEL_TELEGRAM_SUMMARIZER", "DeepSeek-V4-Flash
 # Постоянные команды (не ad-hoc подбор) — работают параллельно над
 # РАЗНЫМИ задачами. Лиды на проверенных gpt-моделях (эти роли реально
 # пишут код через write_file — надёжность tool-calling тут важнее
-# экспериментов с новыми провайдерами). gpt-5.5 им больше не нужен —
-# 5.4 достаточно силён для этого уровня задач, а 5.5 бережём для ролей
-# с правом финального решения.
+# экспериментов с новыми провайдерами).
 SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
 SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
 
@@ -269,4 +243,172 @@ FELLOWS_MODEL_ASSIGNMENTS = {
     "security_crypto_architect": _env("MODEL_FELLOW_SECURITY", "Mistral-Large-3"),
     "formal_correctness_engineer": _env("MODEL_FELLOW_FORMAL", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
     "embedded_edge_engineer": _env("MODEL_FELLOW_EMBEDDED", "gpt-5.4-mini"),
+}
+
+# --- Global Elite I (agents/global_elite.py) — 50 сеньоров ---
+# 9 ролей с наибольшим прямым попаданием в реальные задачи BLD держим
+# на gpt-5.5 (см. docstring файла); остальные 41 размазаны по gpt-5.4
+# и расширенному пулу из 12 сторонних моделей (запрошены отдельно —
+# DeepSeek-V4-Flash/Pro/V3.2/V3.2-Speciale, Llama-4-Maverick,
+# Mistral-Large-3, grok-4.3, grok-4-20-reasoning/non-reasoning,
+# Kimi-K2.7-Code/K2.5, gpt-5.3-codex), нагрузка сбалансирована
+# (10-12 на модель), а не концентрируется на одной-двух.
+GLOBAL_ELITE_1_MODEL_ASSIGNMENTS = {
+    "sjtu_acm": _env("MODEL_ELITE_SJTU_ACM", "DeepSeek-V4-Pro"),
+    "zju_cv": _env("MODEL_ELITE_ZJU_CV", "gpt-5.4"),
+    "fudan_nlp": _env("MODEL_ELITE_FUDAN_NLP", "DeepSeek-V4-Flash"),
+    "cas_amss_math": _env("MODEL_ELITE_CAS_AMSS_MATH", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "ustc_speech": _env("MODEL_ELITE_USTC_SPEECH", "grok-4-20-non-reasoning"),
+    "nudt_algo": _env("MODEL_ELITE_NUDT_ALGO", "Kimi-K2.7-Code"),
+    "buaa_control": _env("MODEL_ELITE_BUAA_CONTROL", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "whu_distsys": _env("MODEL_ELITE_WHU_DISTSYS", "DeepSeek-V4-Pro"),
+    "seu_ai_safety": _env("MODEL_ELITE_SEU_AI_SAFETY", "Mistral-Large-3"),
+    "xjtu_stats": _env("MODEL_ELITE_XJTU_STATS", "grok-4.3"),
+    "scut_queue": _env("MODEL_ELITE_SCUT_QUEUE", "gpt-5.3-codex"),
+    "sysu_riskeng": _env("MODEL_ELITE_SYSU_RISKENG", "gpt-5.5"),
+    "nju_plt": _env("MODEL_ELITE_NJU_PLT", "grok-4-20-reasoning"),
+    "hku_llm_infra": _env("MODEL_ELITE_HKU_LLM_INFRA", "Kimi-K2.5"),
+    "hkust_ml_theory": _env("MODEL_ELITE_HKUST_ML_THEORY", "DeepSeek-V3.2"),
+    "cuhk_cv_legend": _env("MODEL_ELITE_CUHK_CV_LEGEND", "DeepSeek-V3.2-Speciale"),
+    "bit_cryptosec": _env("MODEL_ELITE_BIT_CRYPTOSEC", "Mistral-Large-3"),
+    "ruc_dataeng": _env("MODEL_ELITE_RUC_DATAENG", "gpt-5.4"),
+    "nankai_puremath": _env("MODEL_ELITE_NANKAI_PUREMATH", "grok-4-20-reasoning"),
+    "xmu_mlops": _env("MODEL_ELITE_XMU_MLOPS", "DeepSeek-V4-Flash"),
+    "shanghaitech_graphics": _env("MODEL_ELITE_SHANGHAITECH_GRAPHICS", "grok-4.3"),
+    "zju_observability": _env("MODEL_ELITE_ZJU_OBSERVABILITY", "gpt-5.5"),
+    "scu_networking": _env("MODEL_ELITE_SCU_NETWORKING", "grok-4.3"),
+    "tsinghua_fewshot": _env("MODEL_ELITE_TSINGHUA_FEWSHOT", "gpt-5.5"),
+    "shenzhen_fintech": _env("MODEL_ELITE_SHENZHEN_FINTECH", "grok-4-20-non-reasoning"),
+    "fudan_adversarial_ml": _env("MODEL_ELITE_FUDAN_ADVERSARIAL_ML", "Kimi-K2.7-Code"),
+    "cas_ict_chips": _env("MODEL_ELITE_CAS_ICT_CHIPS", "Kimi-K2.7-Code"),
+    "zju_quant": _env("MODEL_ELITE_ZJU_QUANT", "Kimi-K2.5"),
+    "pku_yuanpei_llm": _env("MODEL_ELITE_PKU_YUANPEI_LLM", "DeepSeek-V3.2"),
+    "tsinghua_yao_algo2": _env("MODEL_ELITE_TSINGHUA_YAO_ALGO2", "gpt-5.5"),
+    "cambridge_physics": _env("MODEL_ELITE_CAMBRIDGE_PHYSICS", "DeepSeek-V3.2-Speciale"),
+    "imperial_robotics": _env("MODEL_ELITE_IMPERIAL_ROBOTICS", "gpt-5.3-codex"),
+    "harvard_stats": _env("MODEL_ELITE_HARVARD_STATS", "grok-4-20-reasoning"),
+    "princeton_ai_theory": _env("MODEL_ELITE_PRINCETON_AI_THEORY", "gpt-5.5"),
+    "sydney_sensor_fusion": _env("MODEL_ELITE_SYDNEY_SENSOR_FUSION", "gpt-5.4"),
+    "epfl_distsys": _env("MODEL_ELITE_EPFL_DISTSYS", "DeepSeek-V4-Pro"),
+    "snu_llm": _env("MODEL_ELITE_SNU_LLM", "DeepSeek-V4-Flash"),
+    "weizmann_crypto": _env("MODEL_ELITE_WEIZMANN_CRYPTO", "Mistral-Large-3"),
+    "gatech_dr": _env("MODEL_ELITE_GATECH_DR", "gpt-5.5"),
+    "delft_civil_ai": _env("MODEL_ELITE_DELFT_CIVIL_AI", "gpt-5.5"),
+    "melbourne_ml": _env("MODEL_ELITE_MELBOURNE_ML", "gpt-5.5"),
+    "anu_algorithms": _env("MODEL_ELITE_ANU_ALGORITHMS", "grok-4-20-reasoning"),
+    "edinburgh_neurosymbolic": _env("MODEL_ELITE_EDINBURGH_NEUROSYMBOLIC", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "kth_robotics": _env("MODEL_ELITE_KTH_ROBOTICS", "grok-4-20-non-reasoning"),
+    "aalto_hci": _env("MODEL_ELITE_AALTO_HCI", "grok-4-20-non-reasoning"),
+    "warsaw_icpc": _env("MODEL_ELITE_WARSAW_ICPC", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "ubc_testing": _env("MODEL_ELITE_UBC_TESTING", "gpt-5.5"),
+    "postech_ai": _env("MODEL_ELITE_POSTECH_AI", "Kimi-K2.5"),
+    "iisc_signal": _env("MODEL_ELITE_IISC_SIGNAL", "DeepSeek-V3.2"),
+    "sorbonne_puremath": _env("MODEL_ELITE_SORBONNE_PUREMATH", "DeepSeek-V3.2-Speciale"),
+}
+
+# --- Global Elite II (agents/global_elite_100.py) — 100 сеньоров ---
+# Ни одной роли на gpt-5.5 — сознательно, чтобы не растягивать самый
+# дорогой уровень на 100 новых позиций. Та же логика балансировки по
+# 13 моделям (gpt-5.4 + 12 сторонних), что и в Global Elite I.
+GLOBAL_ELITE_2_MODEL_ASSIGNMENTS = {
+    "pku_recsys": _env("MODEL_ELITE_PKU_RECSYS", "gpt-5.3-codex"),
+    "shenzhen_billing": _env("MODEL_ELITE_SHENZHEN_BILLING", "DeepSeek-V4-Flash"),
+    "xidian_lowend": _env("MODEL_ELITE_XIDIAN_LOWEND", "Kimi-K2.7-Code"),
+    "neu_china_microservices": _env("MODEL_ELITE_NEU_CHINA_MICROSERVICES", "Kimi-K2.7-Code"),
+    "sjtu_realtime": _env("MODEL_ELITE_SJTU_REALTIME", "gpt-5.4"),
+    "hust_ratelimit": _env("MODEL_ELITE_HUST_RATELIMIT", "Mistral-Large-3"),
+    "sysu_privacy": _env("MODEL_ELITE_SYSU_PRIVACY", "Mistral-Large-3"),
+    "swjtu_api": _env("MODEL_ELITE_SWJTU_API", "DeepSeek-V4-Pro"),
+    "dlut_scheduling": _env("MODEL_ELITE_DLUT_SCHEDULING", "grok-4.3"),
+    "tongji_dataviz": _env("MODEL_ELITE_TONGJI_DATAVIZ", "grok-4-20-non-reasoning"),
+    "pku_xai": _env("MODEL_ELITE_PKU_XAI", "Kimi-K2.5"),
+    "zju_mobile": _env("MODEL_ELITE_ZJU_MOBILE", "Kimi-K2.7-Code"),
+    "shanghaitech_rendering": _env("MODEL_ELITE_SHANGHAITECH_RENDERING", "DeepSeek-V3.2"),
+    "fudan_gametheory": _env("MODEL_ELITE_FUDAN_GAMETHEORY", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "nwpu_tts": _env("MODEL_ELITE_NWPU_TTS", "DeepSeek-V3.2-Speciale"),
+    "whu_experimentation": _env("MODEL_ELITE_WHU_EXPERIMENTATION", "grok-4-20-reasoning"),
+    "chongqing_finops": _env("MODEL_ELITE_CHONGQING_FINOPS", "gpt-5.3-codex"),
+    "hit_nlg": _env("MODEL_ELITE_HIT_NLG", "grok-4-20-non-reasoning"),
+    "xjtu_onboarding": _env("MODEL_ELITE_XJTU_ONBOARDING", "DeepSeek-V4-Flash"),
+    "ustc_bandit": _env("MODEL_ELITE_USTC_BANDIT", "gpt-5.4"),
+    "bupt_apigateway": _env("MODEL_ELITE_BUPT_APIGATEWAY", "gpt-5.3-codex"),
+    "ecupl_compliance": _env("MODEL_ELITE_ECUPL_COMPLIANCE", "DeepSeek-V3.2-Speciale"),
+    "ruc_search": _env("MODEL_ELITE_RUC_SEARCH", "grok-4.3"),
+    "tsinghua_prompteval": _env("MODEL_ELITE_TSINGHUA_PROMPTEVAL", "DeepSeek-V4-Pro"),
+    "uestc_caching": _env("MODEL_ELITE_UESTC_CACHING", "DeepSeek-V4-Pro"),
+    "jilin_staticanalysis": _env("MODEL_ELITE_JILIN_STATICANALYSIS", "gpt-5.3-codex"),
+    "lanzhou_surveybias": _env("MODEL_ELITE_LANZHOU_SURVEYBIAS", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "cug_geotech": _env("MODEL_ELITE_CUG_GEOTECH", "DeepSeek-V3.2-Speciale"),
+    "wut_materials": _env("MODEL_ELITE_WUT_MATERIALS", "DeepSeek-V3.2-Speciale"),
+    "tianjin_concrete_chem": _env("MODEL_ELITE_TIANJIN_CONCRETE_CHEM", "DeepSeek-V3.2-Speciale"),
+    "bjtu_scheduling": _env("MODEL_ELITE_BJTU_SCHEDULING", "Kimi-K2.5"),
+    "shufe_pricing": _env("MODEL_ELITE_SHUFE_PRICING", "DeepSeek-V3.2"),
+    "nanjing_kg": _env("MODEL_ELITE_NANJING_KG", "gpt-5.4"),
+    "harbin_eng_ts": _env("MODEL_ELITE_HARBIN_ENG_TS", "DeepSeek-V4-Flash"),
+    "zju_fedlearn": _env("MODEL_ELITE_ZJU_FEDLEARN", "DeepSeek-V4-Pro"),
+    "iscas_codehealth": _env("MODEL_ELITE_ISCAS_CODEHEALTH", "gpt-5.3-codex"),
+    "csu_safety": _env("MODEL_ELITE_CSU_SAFETY", "DeepSeek-V3.2-Speciale"),
+    "sdu_localization": _env("MODEL_ELITE_SDU_LOCALIZATION", "grok-4-20-reasoning"),
+    "sustech_capacity": _env("MODEL_ELITE_SUSTECH_CAPACITY", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "ucas_quantization": _env("MODEL_ELITE_UCAS_QUANTIZATION", "Mistral-Large-3"),
+    "kyoto_bayesiandl": _env("MODEL_ELITE_KYOTO_BAYESIANDL", "grok-4.3"),
+    "yonsei_uxresearch": _env("MODEL_ELITE_YONSEI_UXRESEARCH", "grok-4-20-non-reasoning"),
+    "ntu_singapore_appsec": _env("MODEL_ELITE_NTU_SINGAPORE_APPSEC", "Mistral-Large-3"),
+    "taiwan_ntu_tooling": _env("MODEL_ELITE_TAIWAN_NTU_TOOLING", "gpt-5.3-codex"),
+    "telaviv_threatmodel": _env("MODEL_ELITE_TELAVIV_THREATMODEL", "Mistral-Large-3"),
+    "bengurion_scarcity": _env("MODEL_ELITE_BENGURION_SCARCITY", "Kimi-K2.5"),
+    "waterloo_clientperf": _env("MODEL_ELITE_WATERLOO_CLIENTPERF", "Kimi-K2.7-Code"),
+    "mcgill_representation": _env("MODEL_ELITE_MCGILL_REPRESENTATION", "DeepSeek-V3.2"),
+    "toronto_finetuning": _env("MODEL_ELITE_TORONTO_FINETUNING", "gpt-5.4"),
+    "kit_safetycritical": _env("MODEL_ELITE_KIT_SAFETYCRITICAL", "grok-4-20-reasoning"),
+    "rwth_numsim": _env("MODEL_ELITE_RWTH_NUMSIM", "DeepSeek-V4-Flash"),
+    "dtu_esg": _env("MODEL_ELITE_DTU_ESG", "grok-4.3"),
+    "amsterdam_ranking": _env("MODEL_ELITE_AMSTERDAM_RANKING", "Kimi-K2.5"),
+    "tcd_audittrail": _env("MODEL_ELITE_TCD_AUDITTRAIL", "DeepSeek-V4-Pro"),
+    "manchester_formalspec": _env("MODEL_ELITE_MANCHESTER_FORMALSPEC", "grok-4-20-reasoning"),
+    "bristol_postquantum": _env("MODEL_ELITE_BRISTOL_POSTQUANTUM", "DeepSeek-V3.2"),
+    "ens_paris_modelresearch": _env("MODEL_ELITE_ENS_PARIS_MODELRESEARCH", "gpt-5.4"),
+    "vienna_nudge": _env("MODEL_ELITE_VIENNA_NUDGE", "DeepSeek-V4-Flash"),
+    "jagiellonian_jargon": _env("MODEL_ELITE_JAGIELLONIAN_JARGON", "grok-4-20-non-reasoning"),
+    "charles_prague_invoiceai": _env("MODEL_ELITE_CHARLES_PRAGUE_INVOICEAI", "grok-4-20-non-reasoning"),
+    "eth_robuststats": _env("MODEL_ELITE_ETH_ROBUSTSTATS", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "zurich_marketdesign": _env("MODEL_ELITE_ZURICH_MARKETDESIGN", "grok-4.3"),
+    "polimi_construction": _env("MODEL_ELITE_POLIMI_CONSTRUCTION", "Kimi-K2.7-Code"),
+    "bologna_actuarial": _env("MODEL_ELITE_BOLOGNA_ACTUARIAL", "DeepSeek-V3.2"),
+    "tue_processmining": _env("MODEL_ELITE_TUE_PROCESSMINING", "Kimi-K2.5"),
+    "kuleuven_encryptedcompute": _env("MODEL_ELITE_KULEUVEN_ENCRYPTEDCOMPUTE", "Mistral-Large-3"),
+    "ghent_ontology": _env("MODEL_ELITE_GHENT_ONTOLOGY", "grok-4-20-non-reasoning"),
+    "lund_feedbackloop": _env("MODEL_ELITE_LUND_FEEDBACKLOOP", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "chalmers_legacymigration": _env("MODEL_ELITE_CHALMERS_LEGACYMIGRATION", "gpt-5.3-codex"),
+    "ntnu_forecasting": _env("MODEL_ELITE_NTNU_FORECASTING", "gpt-5.4"),
+    "copenhagen_correlation": _env("MODEL_ELITE_COPENHAGEN_CORRELATION", "DeepSeek-V3.2"),
+    "iit_delhi_lowresource": _env("MODEL_ELITE_IIT_DELHI_LOWRESOURCE", "DeepSeek-V4-Flash"),
+    "isi_kolkata_evt": _env("MODEL_ELITE_ISI_KOLKATA_EVT", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "usp_fintech_risk": _env("MODEL_ELITE_USP_FINTECH_RISK", "DeepSeek-V3.2"),
+    "puc_chile_remoteops": _env("MODEL_ELITE_PUC_CHILE_REMOTEOPS", "grok-4.3"),
+    "cape_town_grantreporting": _env("MODEL_ELITE_CAPE_TOWN_GRANTREPORTING", "DeepSeek-V4-Pro"),
+    "aub_reconstruction": _env("MODEL_ELITE_AUB_RECONSTRUCTION", "Kimi-K2.7-Code"),
+    "kaust_stochastic": _env("MODEL_ELITE_KAUST_STOCHASTIC", "grok-4-20-reasoning"),
+    "nazarbayev_multicurrency": _env("MODEL_ELITE_NAZARBAYEV_MULTICURRENCY", "Kimi-K2.5"),
+    "auckland_buildingcode": _env("MODEL_ELITE_AUCKLAND_BUILDINGCODE", "DeepSeek-V3.2-Speciale"),
+    "knu_kyiv_numstability": _env("MODEL_ELITE_KNU_KYIV_NUMSTABILITY", "grok-4-20-reasoning"),
+    "kpi_civilvalidation": _env("MODEL_ELITE_KPI_CIVILVALIDATION", "DeepSeek-V3.2-Speciale"),
+    "kharkiv_karazin_legacymod": _env("MODEL_ELITE_KHARKIV_KARAZIN_LEGACYMOD", "gpt-5.4"),
+    "khpi_equipmentutil": _env("MODEL_ELITE_KHPI_EQUIPMENTUTIL", "DeepSeek-V4-Flash"),
+    "ucu_lviv_devex": _env("MODEL_ELITE_UCU_LVIV_DEVEX", "gpt-5.3-codex"),
+    "lviv_polytechnic_dataresidency": _env("MODEL_ELITE_LVIV_POLYTECHNIC_DATARESIDENCY", "Mistral-Large-3"),
+    "mohyla_wareconomy": _env("MODEL_ELITE_MOHYLA_WARECONOMY", "grok-4.3"),
+    "kse_reconstructioncost": _env("MODEL_ELITE_KSE_RECONSTRUCTIONCOST", "DeepSeek-V4-Pro"),
+    "sumy_telecomreliability": _env("MODEL_ELITE_SUMY_TELECOMRELIABILITY", "grok-4.3"),
+    "odesa_mechnikov_monobankux": _env("MODEL_ELITE_ODESA_MECHNIKOV_MONOBANKUX", "grok-4-20-non-reasoning"),
+    "msu_mekhmat_searchmath": _env("MODEL_ELITE_MSU_MEKHMAT_SEARCHMATH", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
+    "mipt_networkphysics": _env("MODEL_ELITE_MIPT_NETWORKPHYSICS", "Kimi-K2.7-Code"),
+    "itmo_dupdetect": _env("MODEL_ELITE_ITMO_DUPDETECT", "Kimi-K2.5"),
+    "nsu_complexityaudit": _env("MODEL_ELITE_NSU_COMPLEXITYAUDIT", "Mistral-Large-3"),
+    "spbgu_devtooling": _env("MODEL_ELITE_SPBGU_DEVTOOLING", "gpt-5.3-codex"),
+    "hse_demandforecast": _env("MODEL_ELITE_HSE_DEMANDFORECAST", "gpt-5.4"),
+    "bsu_minsk_engagement": _env("MODEL_ELITE_BSU_MINSK_ENGAGEMENT", "DeepSeek-V4-Flash"),
+    "kazan_codeswitching": _env("MODEL_ELITE_KAZAN_CODESWITCHING", "DeepSeek-V4-Pro"),
+    "ural_b2bcompliance": _env("MODEL_ELITE_URAL_B2BCOMPLIANCE", "DeepSeek-V3.2-Speciale"),
+    "tomsk_predictivemaintenance": _env("MODEL_ELITE_TOMSK_PREDICTIVEMAINTENANCE", "Kimi-K2.7-Code"),
 }
