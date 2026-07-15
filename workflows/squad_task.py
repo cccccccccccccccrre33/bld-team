@@ -195,9 +195,10 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
     ветке — каждый берёт свою часть, второй продолжает поверх первого.
     """
     from agents.review_gate import run_review_gate
-    from tools.repo_tools import commit_and_push, create_branch
+    from tools.repo_tools import commit_and_push, create_branch, merge_branch_to_main
     from tools.repo_tools import AI_BRANCH_NAME
-    from workflows.engineering_task import guess_repo
+    from workflows.cto_approval import cto_approval
+    from workflows.engineering_task import guess_repo, needs_rework
 
     repo_name = guess_repo(task)
     branch_name = AI_BRANCH_NAME
@@ -238,6 +239,36 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
     review_verdict = await run_review_gate(task, repo_name, branch_name, engineering_summary)
     print(review_verdict)
 
+    # Тот же принцип, что и в run_engineering_task: мерж автоматический
+    # при чистом вердикте, иначе решение за CTO, не за основателем. У
+    # эстафеты нет своего цикла переделки (два отряда уже последовательно
+    # правили друг за другом) — поэтому при проблемах сразу к CTO, без
+    # промежуточного rework-шага.
+    if not needs_rework(review_verdict):
+        print("[relay] Review Gate: вердикт чист — мержим в main автоматически...")
+        merge_result = merge_branch_to_main(repo_name, branch_name, task)
+        print(merge_result)
+        merge_note = f"\n\n{merge_result}"
+    else:
+        print("[relay] Review Gate: есть замечания — решение за CTO...")
+        cto_approved, cto_comment = await cto_approval(
+            squad_label=f"Эстафета {SQUADS['alpha']['label']} → {SQUADS['bravo']['label']}",
+            task_title=task,
+            reason=f"Review Gate дал замечания по совместной работе:\n{review_verdict}",
+            how="Оба отряда уже закончили свои части последовательно на одной ветке.",
+        )
+        if cto_approved:
+            print(f"[relay] CTO решил мержить несмотря на замечания: {cto_comment}")
+            merge_result = merge_branch_to_main(repo_name, branch_name, f"{task} (approved by CTO despite review notes)")
+            print(merge_result)
+            merge_note = f"\n\n🧑‍💼 CTO решил смержить несмотря на замечания: {cto_comment}\n\n{merge_result}"
+        else:
+            print(f"[relay] CTO заблокировал мерж: {cto_comment}")
+            merge_note = (
+                f"\n\n🧑‍💼 CTO НЕ дал добро на мерж: {cto_comment}\n\n"
+                f"⚠️ Изменения остаются в ветке {branch_name} — нужна ручная разборка."
+            )
+
     return (
         f"🔗 СОВМЕСТНАЯ ЗАДАЧА — ЭСТАФЕТА ({SQUADS['alpha']['label']} → {SQUADS['bravo']['label']})\n\n"
         f"ЗАДАЧА:\n{task}\n\n"
@@ -246,5 +277,5 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
         + f"\n\n{push_result}\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nREVIEW GATE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         + review_verdict
-        + "\n\n⚠️ Изменения НЕ в main — открой ветку, проверь и смержи сам."
+        + merge_note
     )
