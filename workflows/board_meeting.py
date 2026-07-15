@@ -263,7 +263,8 @@ async def main():
     send_telegram_report(report)
 
     # Инженерная команда реально пишет и коммитит код по "следующему
-    # шагу" — в отдельную ветку, Валик сам ревьюит и мержит.
+    # шагу" — в отдельную ветку; мерж в main теперь автоматический через
+    # Review Gate (см. workflows/engineering_task.py), без основателя.
     print("\n" + "=" * 80)
     print("Определяем задачу для инженерной команды...")
     secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
