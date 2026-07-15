@@ -197,8 +197,13 @@ PROTECTED_BRANCHES = {"main", "master"}
 # Валика: раньше каждая задача создавала свою уникальную ветку
 # (ai-eng/<slug>-<timestamp>), из-за чего веток становилось много и
 # часть терялась из виду. Теперь ВСЁ уходит в одну и ту же ветку в
-# каждом репозитории (bld-system и bld-panel) — Валик сам смотрит и
-# пушит из неё в main, когда готов. create_branch() идемпотентна —
+# каждом репозитории (bld-system и bld-panel). Раньше отсюда Валик сам
+# смотрел и мержил в main вручную; теперь (см. merge_branch_to_main
+# ниже и workflows/engineering_task.py/squad_task.py) это делает Review
+# Gate автоматически при чистом вердикте — Валик из этой цепочки убран
+# полностью, разве что для инцидентов, где Review Gate сам не смог
+# домержить (конфликт) или дважды не пропустил код — тогда решение
+# уходит CTO, не основателю. create_branch() идемпотентна —
 # повторные вызовы просто переключаются на существующую ветку, не
 # создавая новую и не откатывая изменения.
 AI_BRANCH_NAME = "bld-team-ai"
@@ -324,3 +329,75 @@ def commit_and_push(repo_name: str, branch_name: str, commit_message: str) -> st
         f"commit: {commit_out.stdout.strip() or '(нечего коммитить)'}\n"
         f"push: {push_out.stdout.strip() or push_out.stderr.strip()}"
     )
+
+
+# ============================================================
+# Мерж в main — раньше это был единственный шаг, который руками делал
+# основатель ("Валик"): смотрел на ветку bld-team-ai, решал, готова ли
+# она, и мержил сам. Теперь это делает Review Gate автоматически (см.
+# workflows/engineering_task.py и workflows/squad_task.py): если после
+# не более чем одной переделки все три ревьюера дают чистый вердикт —
+# мерж происходит без участия человека. Инструмент НЕ выдаётся
+# инженерам напрямую (это не write_file на минималках, это самое
+# высокоставочное действие во всей системе) — вызывается только из
+# самого workflow-кода после проверки вердикта, а не по решению модели.
+# ============================================================
+
+
+def merge_branch_to_main(repo_name: str, branch_name: str, summary: str = "") -> str:
+    """Мержит указанную ветку в main и пушит main в origin.
+    ОТКАЗЫВАЕТ, если branch_name сам по себе защищённая ветка (нет
+    смысла мержить main в main). При конфликте мержа ОТКАТЫВАЕТ мерж
+    (git merge --abort) и возвращает понятную ошибку — не оставляет
+    репозиторий в конфликтном состоянии на середине операции.
+
+    Args:
+        repo_name: 'bld-system' или 'bld-panel'.
+        branch_name: ветка, которую мержим в main (обычно AI_BRANCH_NAME).
+        summary: короткое описание для сообщения мерж-коммита (например,
+            исходная задача) — необязательно, но полезно для истории.
+    """
+    if branch_name in PROTECTED_BRANCHES:
+        return f"ОТКАЗ: '{branch_name}' сам по себе защищённая ветка, мержить нечего."
+
+    path = _repo_path(repo_name)
+
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "bld-team-engineer"], capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-C", str(path), "config", "user.email", "bld-team-engineer@users.noreply.github.com"],
+        capture_output=True, text=True,
+    )
+
+    subprocess.run(["git", "-C", str(path), "fetch", "origin", "main"], capture_output=True, text=True)
+    checkout_out = subprocess.run(["git", "-C", str(path), "checkout", "main"], capture_output=True, text=True)
+    if checkout_out.returncode != 0:
+        return f"ОТКАЗ: не удалось переключиться на main: {checkout_out.stderr.strip()}"
+
+    pull_out = subprocess.run(["git", "-C", str(path), "pull", "--ff-only"], capture_output=True, text=True)
+    if pull_out.returncode != 0:
+        return f"ОТКАЗ: не удалось обновить main перед мержем: {pull_out.stderr.strip()}"
+
+    commit_msg = f"Merge {branch_name}: {summary[:100]}" if summary else f"Merge {branch_name} into main"
+    merge_out = subprocess.run(
+        ["git", "-C", str(path), "merge", "--no-ff", branch_name, "-m", commit_msg],
+        capture_output=True, text=True,
+    )
+    if merge_out.returncode != 0:
+        # Конфликт или другая ошибка мержа — откатываем, чтобы не
+        # оставить репозиторий в conflicted-состоянии без присмотра.
+        subprocess.run(["git", "-C", str(path), "merge", "--abort"], capture_output=True, text=True)
+        return (
+            f"ОТКАЗ: мерж {branch_name} → main не прошёл (вероятен конфликт), "
+            f"мерж отменён (merge --abort), main не тронут:\n{merge_out.stdout.strip() or merge_out.stderr.strip()}\n"
+            "Нужна ручная проверка — конфликт сам себя не разрешит."
+        )
+
+    push_out = subprocess.run(["git", "-C", str(path), "push", "origin", "main"], capture_output=True, text=True)
+    if push_out.returncode != 0:
+        return (
+            f"ЧАСТИЧНЫЙ УСПЕХ: мерж сделан локально, но push в origin/main не прошёл: "
+            f"{push_out.stderr.strip()}. main в этом клоне впереди origin — нужно "
+            "разобраться руками, прежде чем что-то ещё пушить в main."
+        )
+
+    return f"✅ {branch_name} смержен в main и запушен в origin.\n{merge_out.stdout.strip()}"
