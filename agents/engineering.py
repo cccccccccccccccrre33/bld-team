@@ -109,15 +109,18 @@ write_file) — не плейсхолдер, а готовый код с учё�
 
 def build_specialist_pool() -> dict:
     """Пул именных специалистов (архетипы мировых топ-вузов + инженерный
-    спецназ), которых лид-инженер может 'нанять' под конкретную задачу —
-    все с write_file, реально пишут код. Используется вместо generic
-    junior_engineer, когда нужен конкретный профиль (надёжность → ETH
-    или Reliability Engineer, скорость вычислений → USTC, latency прода
-    → Performance Engineer, и т.д. — см. SPECIALTY_KEYWORDS в
-    agents/global_geniuses.py и agents/specialists.py)."""
+    спецназ + Global Elite I/II), которых лид-инженер может 'нанять' под
+    конкретную задачу — все с write_file, реально пишут код. Используется
+    вместо generic junior_engineer, когда нужен конкретный профиль
+    (надёжность → ETH или Reliability Engineer, скорость вычислений →
+    USTC, latency прода → Performance Engineer, и т.д. — см.
+    SPECIALTY_KEYWORDS в agents/global_geniuses.py, agents/specialists.py
+    и agents/global_elite.py / agents/global_elite_100.py)."""
     from agents.architecture_council import ARCHITECT_BUILDERS
     from agents.engineering_fellows import FELLOW_BUILDERS
     from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS
+    from agents.global_elite import ELITE1_BUILDERS
+    from agents.global_elite_100 import ELITE2_BUILDERS
     from agents.global_geniuses import GENIUS_BUILDERS
     from agents.growth_team import GROWTH_BUILDERS
     from agents.specialists import SPECIALIST_BUILDERS
@@ -128,22 +131,30 @@ def build_specialist_pool() -> dict:
     pool.update({name: builder(can_write=True) for name, builder in EXPANSION_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in ARCHITECT_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in FELLOW_BUILDERS.items()})
+    pool.update({name: builder(can_write=True) for name, builder in ELITE1_BUILDERS.items()})
+    pool.update({name: builder(can_write=True) for name, builder in ELITE2_BUILDERS.items()})
     return pool
 
 
 def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     """По ключевым словам в тексте лида определяет наиболее подходящего
-    специалиста из пула; если явных совпадений нет — берёт случайного."""
+    специалиста из пула (включая 150 человек Global Elite I/II); если
+    явных совпадений нет — берёт случайного."""
     import random
 
     from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
     from agents.engineering_fellows import SPECIALTY_KEYWORDS as FELLOW_KEYWORDS
     from agents.expansion_geniuses import SPECIALTY_KEYWORDS as EXPANSION_KEYWORDS
+    from agents.global_elite import ELITE1_SPECIALTY_KEYWORDS
+    from agents.global_elite_100 import ELITE2_SPECIALTY_KEYWORDS
     from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
     from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
     from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 
-    all_keywords = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS, **FELLOW_KEYWORDS}
+    all_keywords = {
+        **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
+        **ARCHITECT_KEYWORDS, **FELLOW_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
+    }
     lowered = lead_summary.lower()
     for name, keywords in all_keywords.items():
         if any(kw in lowered for kw in keywords) and name in pool:
