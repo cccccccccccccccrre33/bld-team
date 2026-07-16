@@ -260,7 +260,8 @@ async def main():
     print("ОТЧЁТ:\n")
     print(report)
 
-    send_telegram_report(report)
+    brief = await compile_brief(report, context_hint="заседание совета директоров")
+    send_telegram_report(brief)
 
     # Инженерная команда реально пишет и коммитит код по "следующему
     # шагу" — в отдельную ветку; мерж в main теперь автоматический через
