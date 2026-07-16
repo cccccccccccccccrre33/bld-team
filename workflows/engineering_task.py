@@ -7,7 +7,7 @@ Gate даёт чистый вердикт → merge_branch_to_main() мержи�
 участия человека. Если вердикт остаётся плохим даже после одной
 переделки — решение уходит к CTO (не к основателю), см. cto_approval().
 
-Ведущий инженер (модель gpt-5.5 по умолчанию) сам решает, справится
+Ведущий инженер (модель gpt-5.6-terra по умолчанию) сам решает, справится
 один или нужно привлечь ещё инженеров — без фиксированных сроков,
 по факту сложности того, что видно в реальном коде.
 """
@@ -100,7 +100,7 @@ async def run_engineering_task(
     вето -> отчёт.
 
     По умолчанию (без доп. параметров) — старое поведение: одиночный
-    лид-инженер (gpt-5.5) + полный пул из 13 специалистов. Параметры
+    лид-инженер (gpt-5.6-terra) + полный пул из 13 специалистов. Параметры
     lead_agent/helper_pool позволяют переиспользовать эту же логику
     для постоянных отрядов (workflows/squad_task.py) — свой лид, свой
     ограниченный пул участников отряда.
@@ -111,7 +111,7 @@ async def run_engineering_task(
     print(f"Переключаемся на общую ветку {branch_name} в {repo_name}...")
     print(create_branch(repo_name, branch_name))
 
-    lead_model = lead_model or BOARD_MODEL_ASSIGNMENTS.get("lead_engineer", "gpt-5.5")
+    lead_model = lead_model or BOARD_MODEL_ASSIGNMENTS.get("lead_engineer", "gpt-5.6-terra")
     lead = lead_agent or build_lead_engineer(lead_model)
     pool = helper_pool if helper_pool is not None else build_specialist_pool()
     pool_keywords = {k: v for k, v in ALL_SPECIALTY_KEYWORDS.items() if k in pool} if helper_pool is not None else ALL_SPECIALTY_KEYWORDS
