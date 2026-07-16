@@ -9,7 +9,6 @@ HR слушает и уточняет. В конце — короткая зам
 """
 
 import asyncio
-import random
 
 from agent_framework import Message
 
