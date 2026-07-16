@@ -289,6 +289,63 @@ def write_file(repo_name: str, file_path: str, content: str) -> str:
     return f"Записан файл {file_path} ({len(content)} символов) в ветке {current_branch}"
 
 
+GTM_DIR = Path("gtm-materials")
+
+
+def list_gtm_docs() -> str:
+    """Список уже существующих GTM-материалов (черновики скриптов,
+    сегментация рынка, письма) — чтобы отдел не дублировал то, что уже
+    написано. Не имеет отношения к коду bld-system/bld-panel."""
+    GTM_DIR.mkdir(exist_ok=True)
+    files = sorted(p.name for p in GTM_DIR.glob("*.md"))
+    return "\n".join(files) if files else "(пока пусто)"
+
+
+def read_gtm_doc(file_name: str) -> str:
+    """Читает существующий GTM-документ по имени файла (из list_gtm_docs)."""
+    full_path = GTM_DIR / file_name
+    if not full_path.exists():
+        return f"Файл {file_name} не найден. Доступны: {list_gtm_docs()}"
+    return full_path.read_text(encoding="utf-8")
+
+
+def write_gtm_doc(file_name: str, content: str) -> str:
+    """Записывает GTM-документ (markdown) в gtm-materials/ репозитория
+    bld-team и коммитит его напрямую (как .state/task_board.json — это
+    не код продукта, веток/PR/CTO-approval для этого не нужно).
+
+    ВАЖНО: этот инструмент НИКОГДА не должен использоваться, чтобы
+    "записать" реальную сделку, лида или контакт клиента — только
+    черновики документов для последующего использования человеком.
+
+    Args:
+        file_name: имя файла, например 'sales-script-v2.md'.
+        content: полное содержимое документа.
+    """
+    if not file_name.endswith(".md"):
+        file_name += ".md"
+    GTM_DIR.mkdir(exist_ok=True)
+    full_path = GTM_DIR / file_name
+    full_path.write_text(content, encoding="utf-8")
+
+    subprocess.run(["git", "config", "user.name", "bld-team-gtm"], capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "bld-team-gtm@users.noreply.github.com"],
+        capture_output=True, text=True,
+    )
+    subprocess.run(["git", "add", str(full_path)], capture_output=True, text=True)
+    commit_out = subprocess.run(
+        ["git", "commit", "-m", f"gtm: {file_name}"],
+        capture_output=True, text=True,
+    )
+    if commit_out.returncode != 0 and "nothing to commit" not in commit_out.stdout:
+        return f"Записан {file_name}, но коммит не удался: {commit_out.stdout}\n{commit_out.stderr}"
+    push_out = subprocess.run(["git", "push"], capture_output=True, text=True)
+    if push_out.returncode != 0:
+        return f"Записан и закоммичен {file_name}, но push не удался: {push_out.stderr}"
+    return f"Записан, закоммичен и запушен {file_name} ({len(content)} символов) в gtm-materials/"
+
+
 def commit_and_push(repo_name: str, branch_name: str, commit_message: str) -> str:
     """Коммитит застейдженные изменения (после write_file) и пушит
     ветку в origin. ОТКАЗЫВАЕТ, если текущая ветка — main/master —
