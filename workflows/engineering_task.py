@@ -15,7 +15,6 @@ Gate даёт чистый вердикт → merge_branch_to_main() мержи�
 import asyncio
 import re
 import sys
-from datetime import datetime
 
 from agents.architecture_council import ARCHITECT_LABELS
 from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
