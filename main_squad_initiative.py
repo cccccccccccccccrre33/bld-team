@@ -3,12 +3,14 @@
 цикл: отряд сам находит задачу, проходит approval CTO (или берёт
 мелкую сам), выполняет.
 
-Запуск обоих отрядов:
+Запуск всех отрядов (alpha, bravo, platform, product):
     python main_squad_initiative.py
 
 Запуск одного отряда:
     python main_squad_initiative.py alpha
     python main_squad_initiative.py bravo
+    python main_squad_initiative.py platform
+    python main_squad_initiative.py product
 """
 
 from dotenv import load_dotenv
