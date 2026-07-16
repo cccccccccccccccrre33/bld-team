@@ -209,7 +209,17 @@
       "how": "",
       "created": "16.07.2026 08:03",
       "cto_comment": ""
+    },
+    {
+      "id": "хеврута: msu_mekhmat_searchmath+princeton_ai_theory+imperial_robotics-20260716121959",
+      "title": "Я подумал, что было бы интересно изучить, как можно применить техники ранжирования, которые Яндекс использовал в поиске, к сортировке и приоритизации аномалий и исторических отчётов в BLD System. Это может помочь нам сделать систему более умной и сфокусированной на действительно важных отклонениях. Что если мы попробуем адаптировать некоторые из этих подходов к нашей задаче? [list_repo_files(repo_name='bld-system', subpath='anomaly')]",
+      "squad": "хеврута: msu_mekhmat_searchmath+princeton_ai_theory+imperial_robotics",
+      "status": "in_progress",
+      "reason": "В РЕАЛИЗАЦИЮ — но в узком, дисциплинированном виде.\n\nНе “внедряем Яндекс-ранжирование” и не ML. Это было бы преждевременно. Делаем **Deviation Attention Ranking Layer V1**:\n\n1. **После** `fusion / risk_index / decision`, не внутри detection.\n2. Только deterministic ranker: прозрачная формула, объяснимые `priority_band` и owner-safe reason codes.\n3. Разделить три сущности:\n   - `business_risk_score`\n   - `attention_priority_score`\n   - `historical_relevance_score`\n4. Жёсткие инварианты:\n   - ranking не меняет факт аномалии;\n   - hard physical breach не тонет;\n   - risk/confidence/impact монотонны при прочих равных;\n   - internal/review/dry-run поля не попадают в owner payload.\n5. Добавить logging для будущего learning-to-rank, но ML только позже, когда будут реальные labels.\n\nПочему да: это не академическая игрушка. Если менеджер видит 30 deviations и первые 5 шумные — продукт проиграл, даже если anomaly engine математически хорош. В BLD ценность не в том, чтобы найти всё подозрительное, а в том, чтобы человек первым увидел то, по чему можно действовать.\n\nПочему ограниченно: у нас нет платящих клиентов. Нельзя строить тяжёлую ранжировочную платформу без рынка и лейблов. V1 должен быть маленьким, проверяемым и полезным сразу.\n\nСледующий шаг: короткий design doc на 1–2 страницы: контракт входа/выхода, признаки, priority bands, owner-safe explanation codes, monotonic tests, rollout в shadow/disabled-by-default. После ревью — инженерная задача.",
+      "how": "",
+      "created": "16.07.2026 12:19",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "16.07.2026 08:03"
+  "last_updated": "16.07.2026 12:19"
 }
