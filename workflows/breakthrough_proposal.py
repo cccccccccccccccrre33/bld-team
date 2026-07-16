@@ -33,7 +33,7 @@ from agents.board import build_board
 from agents.ceo import build_ceo
 from agents.engineering_fellows import FELLOW_BUILDERS, FELLOW_LABELS
 from tools.telegram_report import send_telegram_report
-from workflows._common import curate_knowledge, fair_sample, record_participation, sync_repos_or_alert
+from workflows._common import compile_brief, curate_knowledge, fair_sample, record_participation, sync_repos_or_alert
 from workflows.engineering_task import run_engineering_task
 from workflows.task_board import add_task, get_board_summary, is_duplicate, update_task_status
 
@@ -175,7 +175,8 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
         f"ФИЛЬТР:\n{filter_report}\n\n"
         f"{'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'}"
     )
-    send_telegram_report(verdict_msg)
+    verdict_brief = await compile_brief(verdict_msg, context_hint="вердикт фильтра Breakthrough Proposal (Chief Scientist + Chief Architect + CEO)")
+    send_telegram_report(verdict_brief)
 
     task_id = add_task(proposal["idea"], f"fellow:{fellow_key}", status="proposed", reason=proposal.get("reason", ""))
 
@@ -210,7 +211,8 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
     update_task_status(task_id, "done")
 
     full_report = f"🚀 BREAKTHROUGH РЕАЛИЗОВАН — {label}\n\n{report}"
-    send_telegram_report(full_report)
+    brief = await compile_brief(full_report, context_hint="реализация Breakthrough Proposal")
+    send_telegram_report(brief)
     await curate_knowledge(f"Breakthrough Proposal реализован: {label}", f"{verdict_msg}\n\n{full_report}")
     return full_report
 
