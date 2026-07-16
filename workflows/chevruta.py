@@ -27,7 +27,7 @@ from agents.ceo import build_ceo
 from agents.roster import build_full_roster
 from agents.team import build_team
 from tools.telegram_report import send_telegram_report
-from workflows._common import curate_knowledge, fair_sample, record_participation, run_free_conversation, safe_agent_run
+from workflows._common import compile_brief, curate_knowledge, fair_sample, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
 from workflows.task_board import add_task
 
 MAX_TURNS = 10  # чуть больше, чем в Лаборатории — это не решение задачи, а разговор
@@ -132,17 +132,39 @@ async def run_chevruta() -> str:
     mentor_label, reaction = await find_mentor_reaction(topic, transcript_summary)
     print(f"{mentor_label}: {reaction}")
 
-    if "В РЕАЛИЗАЦИЮ" in reaction.upper():
-        task_id = add_task(topic, "хеврута: " + "+".join(group_names), status="proposed")
-        print(f"Заведена задача на доске: {task_id}")
-
     report = (
         f"📖 ХЕВРУТА — {', '.join(group_names)}\n\n"
         f"ТЕМА:\n{topic}\n\n"
         f"РАЗГОВОР:\n{transcript_summary[:2500]}\n\n"
         f"{mentor_label}:\n{reaction}"
     )
-    send_telegram_report(report)
+    brief = await compile_brief(report, context_hint="хеврута — свободное обсуждение в паре/тройке")
+    send_telegram_report(brief)
+
+    # Реакция кумира (CTO или CEO — MENTOR_BUILDERS) с "В РЕАЛИЗАЦИЮ" —
+    # это САМО ПО СЕБЕ старшее одобрение, отдельного cto_approval() не
+    # нужно (было бы избыточно спрашивать CTO дважды). Раньше на этом
+    # всё заканчивалось — задача просто ложилась на task board и
+    # реально никогда не реализовывалась, пока кто-то не подхватит её
+    # руками. Теперь реализация запускается сразу.
+    if "В РЕАЛИЗАЦИЮ" in reaction.upper():
+        task_id = add_task(topic, "хеврута: " + "+".join(group_names), status="in_progress", reason=reaction)
+        print(f"Заведена задача на доске: {task_id}. {mentor_label} одобрил — запускаем реализацию...")
+
+        if not await sync_repos_or_alert():
+            return report
+
+        from workflows.engineering_task import run_engineering_task
+        from workflows.task_board import update_task_status
+
+        engineering_report = await run_engineering_task(topic)
+        update_task_status(task_id, "done")
+
+        full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ХЕВРУТЫ ({mentor_label} одобрил)\n\n{engineering_report}"
+        engineering_brief = await compile_brief(full, context_hint="реализация по итогам хевруты")
+        send_telegram_report(engineering_brief)
+        await curate_knowledge(f"Хеврута → реализовано: {', '.join(group_names)}", f"{report}\n\n{full}")
+        return full
     await curate_knowledge(f"Хеврута: {', '.join(group_names)}", report)
     return report
 
