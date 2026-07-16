@@ -25,11 +25,10 @@ from datetime import datetime
 from pathlib import Path
 
 from agents.roster import build_full_roster
-from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, fair_sample, record_participation, safe_agent_run, sync_repos_or_alert
+from workflows._common import ask, compile_brief, curate_knowledge, fair_sample, record_participation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate
 
@@ -191,7 +190,6 @@ async def escalate_if_ready(thread: dict) -> str | None:
         return None
 
     who = "+".join({m["who"] for m in thread["messages"][-6:]})
-    cto = build_team()["cto"]
     approved, comment = await cto_approval(
         f"Company Pulse ({who})", title,
         "Родилось из живого обсуждения в одной из веток чата компании.",
@@ -216,7 +214,8 @@ async def escalate_if_ready(thread: dict) -> str | None:
     update_task_status(task_id, "done")
 
     full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ВЕТКИ \"{thread['topic']}\"\n\n{engineering_report}"
-    send_telegram_report(full)
+    brief = await compile_brief(full, context_hint="реализация по итогам обсуждения в Company Pulse")
+    send_telegram_report(brief)
     await curate_knowledge(f"Company Pulse → реализовано: {who}", f"{verdict_msg}\n\n{full}")
     return full
 
