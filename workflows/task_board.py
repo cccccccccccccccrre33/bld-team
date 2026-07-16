@@ -138,6 +138,7 @@ def get_board_summary() -> str:
         "in_progress": "🔄 В работе прямо сейчас",
         "done": "✔️  Выполнено",
         "rejected": "❌ Отклонено CTO",
+        "needs_founder_decision": "🧑‍💻 Требует решения/действия Валика лично",
     }
     for status, label in STATUS_LABELS.items():
         tasks = by_status.get(status, [])
