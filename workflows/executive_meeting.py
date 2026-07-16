@@ -21,7 +21,7 @@ from agents.executive_board import build_executive_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, dispatch_worker, extract_messages, extract_next_step, looks_like_meta_complaint
+from workflows._common import ask, compile_brief, curate_knowledge, dispatch_worker, extract_messages, extract_next_step, looks_like_meta_complaint
 
 MAX_MESSAGES = 20
 
@@ -176,7 +176,8 @@ async def main():
         findings = await dispatch_worker(agenda, EXEC_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
         worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ (без обсуждения):\n{agenda}\n\n{findings}"
         print(f"\n{worker_message}")
-        send_telegram_report(worker_message)
+        brief = await compile_brief(worker_message, context_hint="сотрудник взялся за задачу без обсуждения правления")
+        send_telegram_report(brief)
         await curate_knowledge("Правление (без обсуждения)", worker_message)
         return
 
@@ -189,7 +190,8 @@ async def main():
     report = await compile_report(agenda, transcript)
 
     print(f"\n{'=' * 80}\n{report}")
-    send_telegram_report(report)
+    brief = await compile_brief(report, context_hint="заседание правления")
+    send_telegram_report(brief)
 
     print(f"\n{'=' * 80}\nОпределяем задачу для нового сотрудника...")
     secretary_client = get_chat_client(EXEC_MODEL_ASSIGNMENTS["secretary"])
@@ -212,7 +214,8 @@ async def main():
 
     worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ:\n{task}\n\n{findings}"
     print(f"\n{worker_message}")
-    send_telegram_report(worker_message)
+    worker_brief = await compile_brief(worker_message, context_hint="сотрудник взялся за задачу по итогам правления")
+    send_telegram_report(worker_brief)
 
     await curate_knowledge("Правление", report + "\n\n" + worker_message)
 
