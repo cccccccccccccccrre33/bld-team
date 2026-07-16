@@ -229,7 +229,17 @@
       "how": "",
       "created": "16.07.2026 20:02",
       "cto_comment": ""
+    },
+    {
+      "id": "pulse:bayesian_architect+dtu_esg-20260716225551",
+      "title": "Проверить на реальных кейсах evidence-to-owner pipeline, просачивается ли miscalibration/biased probabilities из L9 trust scoring в owner-facing выводы — т.е. влияет ли internal risk-слой на `build_owner_insights_payload` (precision classification/owner-safe status), и зафиксировать это тестом/аудитом.",
+      "squad": "pulse:bayesian_architect+dtu_esg",
+      "status": "in_progress",
+      "reason": "Это не дублирует release-gate: существующий normalizer и `test_trust_internal_only_sentinels.py` запрещают прямую утечку trust-полей, но `trust_multiplier` уже влияет на пороги L1–L7 и тем самым может менять owner-visible deviation без раскрытия самого L9. Нужен узкий детерминированный audit-тест: одинаковые evidence/standards, разные допустимые trust-состояния — и явная фиксация того, какие owner-safe статусы и приоритеты могут меняться; не выдавать синтетические сценарии за «реальные кейсы» и не трогать контракт панели без отдельного решения.",
+      "how": "",
+      "created": "16.07.2026 22:55",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "16.07.2026 20:02"
+  "last_updated": "16.07.2026 22:55"
 }
