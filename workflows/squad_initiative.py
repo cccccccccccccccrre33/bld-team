@@ -179,21 +179,23 @@ async def run_squad_initiative(squad_key: str) -> None:
     await curate_knowledge(f"Инициатива: {squad_label}", full_report)
 
 
-async def run_both_squads_initiative() -> None:
-    """Оба отряда ищут и выполняют задачи параллельно — но каждый
-    на своей ветке, через свой CTO-approval, без дублирования
-    (task board + is_duplicate)."""
+async def run_all_squads_initiative(squad_keys: list[str] | None = None) -> None:
+    """Все переданные отряды (по умолчанию — все из SQUADS) ищут и
+    выполняют задачи параллельно — каждый на своей ветке, через свой
+    CTO-approval, без дублирования (task board + is_duplicate)."""
     print("Синхронизация репозиториев...")
     print(clone_or_update_repos())
 
-    await asyncio.gather(
-        run_squad_initiative("alpha"),
-        run_squad_initiative("bravo"),
-    )
+    keys = squad_keys if squad_keys else list(SQUADS.keys())
+    await asyncio.gather(*(run_squad_initiative(key) for key in keys))
+
+
+# Обратная совместимость со старым именем.
+run_both_squads_initiative = run_all_squads_initiative
 
 
 async def main():
-    squad_key = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ("alpha", "bravo") else None
+    squad_key = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in SQUADS else None
 
     print("Синхронизация репозиториев...")
     print(clone_or_update_repos())
