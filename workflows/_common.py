@@ -5,6 +5,7 @@ board_meeting, office_chat) — чтобы не дублировать одно 
 """
 
 from typing import Any
+import asyncio
 import json
 import subprocess
 from datetime import datetime
@@ -20,9 +21,77 @@ async def ask(client, prompt: str) -> str:
 
     Используется там, где не нужен полноценный Agent — просто "спросить
     и получить текстовый ответ" (формулировка темы, финальный отчёт).
+
+    С ретраями (см. safe_agent_run ниже) — та же причина: сторонние
+    модели через Foundry иногда падают с 'no healthy upstream'
+    (транзиентная недоступность бэкенда), и это не повод ронять весь
+    воркфлоу.
     """
-    response = await client.get_response([Message(role="user", contents=[prompt])])
-    return response.text.strip()
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            response = await client.get_response([Message(role="user", contents=[prompt])])
+            return response.text.strip()
+        except Exception as e:
+            if attempt == RETRY_ATTEMPTS - 1:
+                raise
+            print(f"[ask] Попытка {attempt + 1}/{RETRY_ATTEMPTS} упала ({e}), жду {RETRY_DELAY_SECONDS}с...")
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
+
+
+# Сколько раз пробуем один и тот же вызов, прежде чем сдаться. Причина
+# появления: "no healthy upstream" от Azure Foundry на сторонних
+# моделях (DeepSeek/Llama/Mistral/grok/Kimi и т.п.) — это транзиентная
+# недоступность конкретного бэкенда, в большинстве случаев проходит
+# через несколько секунд. Раньше НИ ОДИН вызов person.run()/ask() в
+# воркфлоу на полном ростере (build_full_roster, ~209 человек) не был
+# защищён вообще — единственный неудачный вызов ронял весь скрипт
+# (main_company_pulse.py и т.п.) с необработанным исключением. Теперь,
+# когда добрая половина ростера — сторонние модели с ограниченной
+# квотой, вероятность попасть на "минутную недоступность" не нулевая,
+# и должна гаситься здесь, а не крашить весь GitHub Actions run.
+RETRY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 5.0
+
+
+async def safe_agent_run(person, prompt: str, person_label: str = "") -> str | None:
+    """Обёртка над person.run(prompt) с ретраями и graceful-провалом.
+
+    Если модель конкретного агента временно недоступна ('no healthy
+    upstream' и подобные транзиентные ошибки инфраструктуры) — пробует
+    ещё RETRY_ATTEMPTS-1 раз с паузой RETRY_DELAY_SECONDS. Если так и
+    не получилось — печатает ЧЁТКОЕ сообщение с указанием, КТО именно
+    упал (person_label), чтобы это было видно в логах GitHub Actions, и
+    возвращает None вместо падения всего воркфлоу. Вызывающий код
+    должен уметь пропустить этот шаг (например, выбрать другого
+    человека или просто не породить сообщение в этом тике) — не
+    считать None крашем.
+
+    Если один и тот же person_label падает ПОСТОЯННО (не время от
+    времени) — это, вероятно, НЕ транзиентная проблема, а модель,
+    которая либо не задеплоена под этим именем в Foundry, либо
+    задеплоена неправильно — тогда ретраи не помогут, и это надо чинить
+    руками (проверить имя деплоя в config/models.py против реального
+    списка деплоев в Azure AI Foundry).
+    """
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            response = await person.run(prompt)
+            return response.text.strip()
+        except Exception as e:
+            if attempt == RETRY_ATTEMPTS - 1:
+                print(
+                    f"[safe_agent_run] {person_label or '?'} — модель недоступна после "
+                    f"{RETRY_ATTEMPTS} попыток, пропускаем этот шаг (не крашим воркфлоу). "
+                    f"Если это повторяется ПОСТОЯННО именно для {person_label or '?'} — "
+                    f"проверь, что соответствующий deployment name реально существует в "
+                    f"Azure AI Foundry (см. config/models.py). Ошибка: {e}"
+                )
+                return None
+            print(
+                f"[safe_agent_run] {person_label or '?'}: попытка {attempt + 1}/{RETRY_ATTEMPTS} "
+                f"упала ({e}), жду {RETRY_DELAY_SECONDS}с..."
+            )
+            await asyncio.sleep(RETRY_DELAY_SECONDS)
 
 
 def extract_messages(outputs: list[Any]) -> list[Message]:
@@ -424,14 +493,21 @@ async def run_free_conversation(
     каждый раз).
 
     Порядок ходов — простой round-robin по списку participants.
+
+    Каждый ход защищён safe_agent_run — если у конкретного участника
+    модель временно недоступна, этот ход просто пропускается (без
+    сообщения), разговор продолжается со следующего участника, вместо
+    падения всей функции.
     """
     history: list[Message] = [Message(role="user", contents=[opening_prompt])]
     transcript: list[Message] = []
 
     for i in range(max_turns):
         agent = participants[i % len(participants)]
-        response = await agent.run(history)
-        msg = Message(role="assistant", contents=[response.text], author_name=agent.name)
+        text = await safe_agent_run(agent, history, person_label=getattr(agent, "name", f"participant_{i % len(participants)}"))
+        if text is None:
+            continue
+        msg = Message(role="assistant", contents=[text], author_name=agent.name)
         history.append(msg)
         transcript.append(msg)
 
