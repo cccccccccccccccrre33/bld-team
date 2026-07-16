@@ -29,7 +29,7 @@ from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, fair_sample, record_participation, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, fair_sample, record_participation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate
 
@@ -114,40 +114,48 @@ async def assess_readiness(messages: list[dict]) -> dict | None:
     return {"title": title} if title else None
 
 
-async def run_one_thread(roster: dict, thread: dict | None, excluded: set[str]) -> tuple[dict, list[dict]]:
+async def run_one_thread(roster: dict, thread: dict | None, excluded: set[str]) -> tuple[dict | None, list[dict]]:
     """Прогоняет ОДНУ независимую мини-ветку (1-2 реплики за тик).
     excluded — люди, уже занятые в других ветках этого же тика (чтобы
     один человек не говорил одновременно в двух разных разговорах).
-    Возвращает (обновлённый thread-объект, новые сообщения этого тика)."""
+    Возвращает (обновлённый thread-объект или None, новые сообщения
+    этого тика). None означает "в этот тик эта ветка молчит" (например,
+    несколько случайных людей подряд оказались на временно недоступной
+    модели) — это НЕ ошибка, вызывающий код просто пропускает слот."""
     pool = [p for p in roster if p not in excluded]
     if not pool:
         pool = list(roster.keys())
 
     is_new = thread is None
     if is_new:
-        starter = fair_sample(pool, k=1)[0]
-        person = roster[starter]
         prompt = """
 Ты в одном из рабочих чатов компании — свободная ветка для новых
 мыслей о системе. Начни разговор — какая мысль о BLD System реально
 сейчас тебя занимает? Пиши как в живом чате: коротко, естественно,
 1-3 предложения, без формальных заголовков.
 """
-        response = await person.run(prompt)
-        text = response.text.strip()
-        msg = {"who": starter, "text": text, "time": datetime.now().strftime("%H:%M")}
-        thread = {
-            "id": f"t{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(10,99)}",
-            "topic": text[:80],
-            "messages": [msg],
-            "last_active": datetime.now().isoformat(),
-        }
-        return thread, [msg]
+        # Пробуем нескольких разных случайных людей подряд — если у
+        # первого модель временно недоступна, берём другого, а не
+        # роняем весь тик из-за одного невезучего randomly picked агента.
+        candidates = fair_sample(pool, k=min(3, len(pool)))
+        for starter in candidates:
+            person = roster[starter]
+            text = await safe_agent_run(person, prompt, person_label=starter)
+            if text is None:
+                continue
+            msg = {"who": starter, "text": text, "time": datetime.now().strftime("%H:%M")}
+            new_thread = {
+                "id": f"t{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(10,99)}",
+                "topic": text[:80],
+                "messages": [msg],
+                "last_active": datetime.now().isoformat(),
+            }
+            return new_thread, [msg]
+        print("[company_pulse] Все кандидаты на старт новой ветки временно недоступны — пропускаем слот в этом тике.")
+        return None, []
 
     # Продолжение существующей ветки — 1 ответ за тик (не залпом,
     # чтобы разговор тянулся во времени, как реальный Slack-тред).
-    speaker = fair_sample(pool, k=1)[0]
-    person = roster[speaker]
     context = format_thread_messages(thread["messages"])
     prompt = f"""
 Вот разговор в одной из веток чата компании:
@@ -156,13 +164,19 @@ async def run_one_thread(roster: dict, thread: dict | None, excluded: set[str]) 
 Ответь в тему — согласись, поспорь, добавь деталь, задай вопрос,
 предложи развитие мысли. Коротко (1-3 предложения), как в живом чате.
 """
-    response = await person.run(prompt)
-    text = response.text.strip()
-    msg = {"who": speaker, "text": text, "time": datetime.now().strftime("%H:%M")}
-    thread["messages"].append(msg)
-    thread["messages"] = thread["messages"][-60:]
-    thread["last_active"] = datetime.now().isoformat()
-    return thread, [msg]
+    candidates = fair_sample(pool, k=min(3, len(pool)))
+    for speaker in candidates:
+        person = roster[speaker]
+        text = await safe_agent_run(person, prompt, person_label=speaker)
+        if text is None:
+            continue
+        msg = {"who": speaker, "text": text, "time": datetime.now().strftime("%H:%M")}
+        thread["messages"].append(msg)
+        thread["messages"] = thread["messages"][-60:]
+        thread["last_active"] = datetime.now().isoformat()
+        return thread, [msg]
+    print(f"[company_pulse] Все кандидаты на ответ в ветке '{thread['topic']}' временно недоступны — ветка молчит в этом тике.")
+    return thread, []
 
 
 async def escalate_if_ready(thread: dict) -> str | None:
@@ -229,6 +243,10 @@ async def run_pulse_tick() -> str | None:
         thread = None if pick_new else random.choice(existing)
 
         updated_thread, new_msgs = await run_one_thread(roster, thread, excluded)
+        if updated_thread is None:
+            # Все кандидаты на этот слот были временно недоступны —
+            # пропускаем слот целиком, не крашим весь тик.
+            continue
         updated_threads[updated_thread["id"]] = updated_thread
         for m in new_msgs:
             excluded.add(m["who"])
