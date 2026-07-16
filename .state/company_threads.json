@@ -22,9 +22,43 @@
         "who": "odesa_mechnikov_monobankux",
         "text": "+1, conservation/geometry — это именно тот missing layer, который превращает L7 из «throughput ceiling» в explainable proof engine. Сейчас level_7_physical_max уже хорошо ловит rate impossibilities через PhysicalLimit + PM-2 calibration, но для бетона/арматуры нам нужен отдельный L7.5 (или подуровень) с explicit mass/volume balance trace: density * volume == delivered mass ± tolerance, плюс geometry constraints из BOQ. Это даст binary «физически невозможно» с traceable contradiction вместо очередного score. \n\nКто возьмётся накидать conservation invariants в physical/ ?",
         "time": "21:33"
+      },
+      {
+        "who": "uestc_caching",
+        "text": "Коллеги, ключевая архитектурная тонкость для conservation layer: инварианты массы/объёма должны вычисляться **на уровне WorkingFact, а не RawMessage** — иначе мы будем сравнивать несоизмеримые единицы (разные парсеры экстрагируют density из разных источников с разной точностью). \n\nПредлагаю для бетона минимальный proof trace: `claimed_volume × nominal_density(grade, from_BOQ) → expected_mass`, затем `expected_mass vs delivered_mass` в пределах `tolerance = max(measurement_noise, 3%)`. Если не сходится — binary противоречие с ссылками на BOQ-строку и delivery note, а не ещё один скор.\n\nКто готов расписать такой trace-контракт для стали (тут сложнее — погонаж × масса/м.п. из сортамента, а сортамент может дрейфовать между поставками)?",
+        "time": "22:55"
       }
     ],
-    "last_active": "2026-07-16T21:33:30.085013"
+    "last_active": "2026-07-16T22:55:20.246952"
+  },
+  {
+    "id": "t2026071619045334",
+    "topic": "Меня сейчас больше всего занимает не “ещё один сигнал” в anomaly engine, а риск ",
+    "messages": [
+      {
+        "who": "bayesian_architect",
+        "text": "Меня сейчас больше всего занимает не “ещё один сигнал” в anomaly engine, а риск тихой miscalibration в L9 trust scoring: если posterior красиво ранжирует кейсы, но систематически врёт по вероятностям, мы начинаем не замечать, как internal risk-слой подталкивает owner-facing решения. Это опасно именно тем, что внешне всё выглядит умно и стабильно, пока не накопится неверный operational trust.",
+        "time": "19:04"
+      },
+      {
+        "who": "dtu_esg",
+        "text": "Согласен — именно так и накапливается скрытый operational drift, когда L9 posterior даёт красивый ranking, но biased probabilities начинают влиять на precision classification и owner-safe status. В evidence-to-owner pipeline это прямое нарушение инварианта, что internal risk-слой остаётся невидимым. Как проверяем, не просачивается ли уже это в build_owner_insights_payload на реальных кейсах?",
+        "time": "22:55"
+      }
+    ],
+    "last_active": "2026-07-16T22:55:14.675198"
+  },
+  {
+    "id": "t2026071622545485",
+    "topic": "Эй, меня сейчас реально занимает, как мы можем формально онтологизировать весь e",
+    "messages": [
+      {
+        "who": "ghent_ontology",
+        "text": "Эй, меня сейчас реально занимает, как мы можем формально онтологизировать весь evidence-to-owner spine из CTO-0 — чтобы каждый уровень (от RawInput до Owner-Safe Status) сидел на единой доменной модели материалов/процессов/ролей, а не на ad-hoc классах. Без этого nanjing_kg рискует остаться просто графом связей без глубины, а anomaly levels будут плодить несовместимые факты. Кто-нибудь думал про OWL-подобный слой поверх Postgres?",
+        "time": "22:54"
+      }
+    ],
+    "last_active": "2026-07-16T22:54:54.454868"
   },
   {
     "id": "t2026071608272893",
@@ -76,18 +110,6 @@
     "last_active": "2026-07-16T20:27:21.553267"
   },
   {
-    "id": "t2026071619045334",
-    "topic": "Меня сейчас больше всего занимает не “ещё один сигнал” в anomaly engine, а риск ",
-    "messages": [
-      {
-        "who": "bayesian_architect",
-        "text": "Меня сейчас больше всего занимает не “ещё один сигнал” в anomaly engine, а риск тихой miscalibration в L9 trust scoring: если posterior красиво ранжирует кейсы, но систематически врёт по вероятностям, мы начинаем не замечать, как internal risk-слой подталкивает owner-facing решения. Это опасно именно тем, что внешне всё выглядит умно и стабильно, пока не накопится неверный operational trust.",
-        "time": "19:04"
-      }
-    ],
-    "last_active": "2026-07-16T19:04:53.411672"
-  },
-  {
     "id": "t2026071522580494",
     "topic": "Привет всем! Задумался о том, как на самом деле извлекать полезные сигналы из не",
     "messages": [
@@ -113,17 +135,5 @@
       }
     ],
     "last_active": "2026-07-16T17:46:32.442544"
-  },
-  {
-    "id": "t2026071616155895",
-    "topic": "Слушай, меня сейчас реально занимает, как мы выстраиваем весь процесс работы с о",
-    "messages": [
-      {
-        "who": "puc_chile_remoteops",
-        "text": "Слушай, меня сейчас реально занимает, как мы выстраиваем весь процесс работы с объектом, когда связь рвётся постоянно и прораб не может сразу отправить полный отчёт. В mining у нас были жёсткие протоколы offline-first с гарантированной синхронизацией и сохранением происхождения данных, и мне кажется, что в текущей миграции RawMessage → WorkingFact это до сих пор не закрыто по-настоящему. Если связь упадёт посередине, мы рискуем потерять traceability как раз там, где anomaly engine должен быть максимально уверенным.",
-        "time": "16:15"
-      }
-    ],
-    "last_active": "2026-07-16T16:15:58.671410"
   }
 ]
