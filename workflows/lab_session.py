@@ -40,7 +40,7 @@ ROLE_LABELS = {
     "fizmat": "🎲 Физмат", "tehmat": "♟️  Техмат", "chief_scientist": "🔭 Chief Scientist", "ceo": "👑 CEO",
     "cto": "🧑‍💼 CTO", "backend_senior": "⌨️  Backend",
     "product_frontend": "🎨 Product/Frontend", "qa_security": "🔒 QA/Security",
-    "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR", "vp_engineering": "📐 VP Engineering", "squad_lead_alpha": "🅰️  Squad Lead Alpha", "squad_lead_bravo": "🅱️  Squad Lead Bravo",
+    "coo": "🗂️  COO", "hr": "🧑‍🤝‍🧑 HR", "vp_engineering": "📐 VP Engineering", "squad_lead_alpha": "🅰️  Squad Lead Alpha", "squad_lead_bravo": "🅱️  Squad Lead Bravo", "squad_lead_platform": "🅿️  Squad Lead Platform", "squad_lead_product": "🎨 Squad Lead Product", "gtm_lead": "📈 GTM Lead",
     **GLOBAL_LABELS,
     **SPECIALIST_LABELS,
     **GROWTH_LABELS,
