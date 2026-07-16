@@ -30,7 +30,7 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, fair_sample, record_participation, run_free_conversation, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, fair_sample, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
 
 MAX_TURNS = 10  # раунды разговора в паре/тройке — короче группового заседания
 
@@ -90,8 +90,12 @@ async def find_problem(group_names: list[str]) -> str:
 """
     if tools:
         agent = client.as_agent(name="opener", instructions="Помогаешь сформулировать рабочую проблему.", tools=tools)
-        response = await agent.run(prompt)
-        return response.text.strip()
+        text = await safe_agent_run(agent, prompt, person_label=f"{opener_role} (lab opener, with tools)")
+        if text is not None:
+            return text
+        # Модель с tools временно недоступна — пробуем без tools как
+        # запасной вариант, чем падать всю сессию из-за одной проблемы.
+        print("Опенер с доступом к коду недоступен — пробуем без tools...")
     return await ask(client, prompt)
 
 
