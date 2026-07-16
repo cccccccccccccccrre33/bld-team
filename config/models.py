@@ -5,19 +5,24 @@
 в твоём Azure AI Foundry проекте (как ты их назвал при деплое модели).
 
 История: изначально тут были смешаны сторонние модели (grok-4.3,
-DeepSeek-V4-Pro) с настоящими Azure OpenAI (gpt-5.4, gpt-5.5). На
+DeepSeek-V4-Pro) с настоящими Azure OpenAI (gpt-5.4, gpt-5.6-terra). На
 практике сторонние модели через маркетплейс Foundry падают с 500-й
 ошибкой — библиотека agent-framework обращается к ним через т.н.
 Responses API, который сторонние модели (не-OpenAI) в большинстве
 случаев не поддерживают, только настоящие Azure OpenAI deployment'ы.
-Поэтому теперь везде используются ТОЛЬКО модели линейки gpt-5.x —
-разного веса, чтобы держать баланс между качеством и стоимостью.
+Поэтому базовые/решающие роли (CTO, CEO, лид-инженер и т.д.) — только
+модели линейки gpt-5.x. Позже появился dual-routing в
+config/client_factory.py, который умеет надёжно обращаться и к
+сторонним моделям тоже — поэтому у части ролей (Global Elite I/II,
+reviewer, failure_engineer) сознательно стоят сторонние модели для
+баланса нагрузки и разнообразия "точек зрения", но это исключение, а
+не общее правило.
 
-Уровни нагрузки (от дорогого к дешёвому):
-- gpt-5.5       — самый дорогой и сильный. Только для ролей, где
+Уровни нагрузки внутри линейки gpt-5.x (от дорогого к дешёвому):
+- gpt-5.6-terra — самый дорогой и сильный. Только для ролей, где
                   реально нужна максимальная глубина рассуждений.
-- gpt-5.4       — сильная модель, дешевле 5.5. Для ролей с серьёзной
-                  содержательной нагрузкой, но не топовых.
+- gpt-5.4       — сильная модель, дешевле gpt-5.6-terra. Для ролей с
+                  серьёзной содержательной нагрузкой, но не топовых.
 - gpt-5.4-mini  — средний уровень. Для ролей, где нужна вменяемость,
                   но не крайняя строгость.
 - gpt-5.4-nano  — самый дешёвый. Для чисто роутинговых/технических
@@ -52,7 +57,7 @@ def _env(key: str, default: str) -> str:
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": _env("MODEL_CTO", "gpt-5.5"),
+    "cto": _env("MODEL_CTO", "gpt-5.6-terra"),
 
     # Дотошный сильный синьор-бэкендер
     "backend_senior": _env("MODEL_BACKEND", "gpt-5.4"),
@@ -106,7 +111,7 @@ BOARD_MODEL_ASSIGNMENTS = {
     # Инженерная команда (agents/engineering.py) — РЕАЛЬНО пишет и
     # коммитит код (в отдельную ветку). Лид — топовая модель, ему
     # доверена вся техническая глубина; привлечённые инженеры дешевле.
-    "lead_engineer": _env("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.5"),
+    "lead_engineer": _env("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.6-terra"),
     "junior_engineer": _env("MODEL_BOARD_JUNIOR_ENGINEER", "gpt-5.4-mini"),
 }
 
@@ -130,7 +135,7 @@ EXEC_MODEL_ASSIGNMENTS = {
 # Архетипы по мировым топ-вузам — используются И в общем ростере
 # (Лаборатория, HR 1-на-1), И как пул специалистов, которых лид-инженер
 # может "нанять" под конкретную задачу (agents/engineering.py).
-# gpt-5.5 сознательно не раздаём сюда — он остаётся эксклюзивным для
+# gpt-5.6-terra сознательно не раздаём сюда — он остаётся эксклюзивным для
 # Мехмата (совет) и Лид-инженера, чтобы не взорвать косты.
 GLOBAL_MODEL_ASSIGNMENTS = {
     "mit": _env("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
@@ -147,17 +152,17 @@ GLOBAL_MODEL_ASSIGNMENTS = {
 # --- Лидерство (agents/leadership.py) ---
 # Chief Scientist — 5-й член совета директоров ("ту ли задачу решаем").
 # VP Engineering — 3-й член правления (приоритизация инженерных задач).
-CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.5")
+CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.6-terra")
 VP_ENGINEERING_MODEL = _env("MODEL_VP_ENGINEERING", "gpt-5.4")
 
 # CEO — самый высокий авторитет в компании, флагманская модель.
-CEO_MODEL = _env("MODEL_CEO", "gpt-5.5")
+CEO_MODEL = _env("MODEL_CEO", "gpt-5.6-terra")
 
 # --- Review Gate (agents/review_gate.py) ---
 # Проверяют результат инженерной задачи ПЕРЕД тем как отчёт уйдёт
 # Валику — архитектурное вето, качество кода, попытка сломать решение.
 REVIEW_GATE_MODEL_ASSIGNMENTS = {
-    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.5"),
+    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.6-terra"),
     "reviewer": _env("MODEL_REVIEWER", "DeepSeek-V4-Pro"),  # силён в логике/сложности — Big O
     "failure_engineer": _env("MODEL_FAILURE_ENGINEER", "grok-4.3"),  # дерзкий стиль — специально всё ломает
 }
@@ -187,6 +192,18 @@ TELEGRAM_SUMMARIZER_MODEL = _env("MODEL_TELEGRAM_SUMMARIZER", "DeepSeek-V4-Flash
 # экспериментов с новыми провайдерами).
 SQUAD_LEAD_ALPHA_MODEL = _env("MODEL_SQUAD_LEAD_ALPHA", "gpt-5.4")
 SQUAD_LEAD_BRAVO_MODEL = _env("MODEL_SQUAD_LEAD_BRAVO", "gpt-5.4")
+# Platform (CI/CD, деплой, инфраструктура) и Product (UX/интерфейс
+# панели и бота) — 2 новых постоянных отряда, тот же принцип, что у
+# Alpha/Bravo. См. agents/squads.py.
+SQUAD_LEAD_PLATFORM_MODEL = _env("MODEL_SQUAD_LEAD_PLATFORM", "gpt-5.4")
+SQUAD_LEAD_PRODUCT_MODEL = _env("MODEL_SQUAD_LEAD_PRODUCT", "gpt-5.4")
+
+# --- GTM (agents/gtm.py, workflows/gtm_initiative.py) ---
+# Не пишет код и никогда не "заключает сделки" — производит только
+# черновики документов (сегментация рынка, скрипты, письма), которые
+# складываются в gtm-materials/ и ВСЕГДА требуют решения Валика для
+# всего, что выглядит как реальное действие вовне.
+GTM_LEAD_MODEL = _env("MODEL_GTM_LEAD", "gpt-5.4-mini")
 
 # --- Рост команды (agents/growth_team.py) ---
 # 4 новые роли под конкретные пробелы: эксплуатация AI-пайплайна,
@@ -247,7 +264,7 @@ FELLOWS_MODEL_ASSIGNMENTS = {
 
 # --- Global Elite I (agents/global_elite.py) — 50 сеньоров ---
 # 9 ролей с наибольшим прямым попаданием в реальные задачи BLD держим
-# на gpt-5.5 (см. docstring файла); остальные 41 размазаны по gpt-5.4
+# на gpt-5.6-terra (см. docstring файла); остальные 41 размазаны по gpt-5.4
 # и расширенному пулу из 12 сторонних моделей (запрошены отдельно —
 # DeepSeek-V4-Flash/Pro/V3.2/V3.2-Speciale, Llama-4-Maverick,
 # Mistral-Large-3, grok-4.3, grok-4-20-reasoning/non-reasoning,
@@ -265,7 +282,7 @@ GLOBAL_ELITE_1_MODEL_ASSIGNMENTS = {
     "seu_ai_safety": _env("MODEL_ELITE_SEU_AI_SAFETY", "Mistral-Large-3"),
     "xjtu_stats": _env("MODEL_ELITE_XJTU_STATS", "grok-4.3"),
     "scut_queue": _env("MODEL_ELITE_SCUT_QUEUE", "gpt-5.3-codex"),
-    "sysu_riskeng": _env("MODEL_ELITE_SYSU_RISKENG", "gpt-5.5"),
+    "sysu_riskeng": _env("MODEL_ELITE_SYSU_RISKENG", "gpt-5.6-terra"),
     "nju_plt": _env("MODEL_ELITE_NJU_PLT", "grok-4-20-reasoning"),
     "hku_llm_infra": _env("MODEL_ELITE_HKU_LLM_INFRA", "Kimi-K2.5"),
     "hkust_ml_theory": _env("MODEL_ELITE_HKUST_ML_THEORY", "DeepSeek-V3.2"),
@@ -275,39 +292,39 @@ GLOBAL_ELITE_1_MODEL_ASSIGNMENTS = {
     "nankai_puremath": _env("MODEL_ELITE_NANKAI_PUREMATH", "grok-4-20-reasoning"),
     "xmu_mlops": _env("MODEL_ELITE_XMU_MLOPS", "DeepSeek-V4-Flash"),
     "shanghaitech_graphics": _env("MODEL_ELITE_SHANGHAITECH_GRAPHICS", "grok-4.3"),
-    "zju_observability": _env("MODEL_ELITE_ZJU_OBSERVABILITY", "gpt-5.5"),
+    "zju_observability": _env("MODEL_ELITE_ZJU_OBSERVABILITY", "gpt-5.6-terra"),
     "scu_networking": _env("MODEL_ELITE_SCU_NETWORKING", "grok-4.3"),
-    "tsinghua_fewshot": _env("MODEL_ELITE_TSINGHUA_FEWSHOT", "gpt-5.5"),
+    "tsinghua_fewshot": _env("MODEL_ELITE_TSINGHUA_FEWSHOT", "gpt-5.6-terra"),
     "shenzhen_fintech": _env("MODEL_ELITE_SHENZHEN_FINTECH", "grok-4-20-non-reasoning"),
     "fudan_adversarial_ml": _env("MODEL_ELITE_FUDAN_ADVERSARIAL_ML", "Kimi-K2.7-Code"),
     "cas_ict_chips": _env("MODEL_ELITE_CAS_ICT_CHIPS", "Kimi-K2.7-Code"),
     "zju_quant": _env("MODEL_ELITE_ZJU_QUANT", "Kimi-K2.5"),
     "pku_yuanpei_llm": _env("MODEL_ELITE_PKU_YUANPEI_LLM", "DeepSeek-V3.2"),
-    "tsinghua_yao_algo2": _env("MODEL_ELITE_TSINGHUA_YAO_ALGO2", "gpt-5.5"),
+    "tsinghua_yao_algo2": _env("MODEL_ELITE_TSINGHUA_YAO_ALGO2", "gpt-5.6-terra"),
     "cambridge_physics": _env("MODEL_ELITE_CAMBRIDGE_PHYSICS", "DeepSeek-V3.2-Speciale"),
     "imperial_robotics": _env("MODEL_ELITE_IMPERIAL_ROBOTICS", "gpt-5.3-codex"),
     "harvard_stats": _env("MODEL_ELITE_HARVARD_STATS", "grok-4-20-reasoning"),
-    "princeton_ai_theory": _env("MODEL_ELITE_PRINCETON_AI_THEORY", "gpt-5.5"),
+    "princeton_ai_theory": _env("MODEL_ELITE_PRINCETON_AI_THEORY", "gpt-5.6-terra"),
     "sydney_sensor_fusion": _env("MODEL_ELITE_SYDNEY_SENSOR_FUSION", "gpt-5.4"),
     "epfl_distsys": _env("MODEL_ELITE_EPFL_DISTSYS", "DeepSeek-V4-Pro"),
     "snu_llm": _env("MODEL_ELITE_SNU_LLM", "DeepSeek-V4-Flash"),
     "weizmann_crypto": _env("MODEL_ELITE_WEIZMANN_CRYPTO", "Mistral-Large-3"),
-    "gatech_dr": _env("MODEL_ELITE_GATECH_DR", "gpt-5.5"),
-    "delft_civil_ai": _env("MODEL_ELITE_DELFT_CIVIL_AI", "gpt-5.5"),
-    "melbourne_ml": _env("MODEL_ELITE_MELBOURNE_ML", "gpt-5.5"),
+    "gatech_dr": _env("MODEL_ELITE_GATECH_DR", "gpt-5.6-terra"),
+    "delft_civil_ai": _env("MODEL_ELITE_DELFT_CIVIL_AI", "gpt-5.6-terra"),
+    "melbourne_ml": _env("MODEL_ELITE_MELBOURNE_ML", "gpt-5.6-terra"),
     "anu_algorithms": _env("MODEL_ELITE_ANU_ALGORITHMS", "grok-4-20-reasoning"),
     "edinburgh_neurosymbolic": _env("MODEL_ELITE_EDINBURGH_NEUROSYMBOLIC", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
     "kth_robotics": _env("MODEL_ELITE_KTH_ROBOTICS", "grok-4-20-non-reasoning"),
     "aalto_hci": _env("MODEL_ELITE_AALTO_HCI", "grok-4-20-non-reasoning"),
     "warsaw_icpc": _env("MODEL_ELITE_WARSAW_ICPC", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
-    "ubc_testing": _env("MODEL_ELITE_UBC_TESTING", "gpt-5.5"),
+    "ubc_testing": _env("MODEL_ELITE_UBC_TESTING", "gpt-5.6-terra"),
     "postech_ai": _env("MODEL_ELITE_POSTECH_AI", "Kimi-K2.5"),
     "iisc_signal": _env("MODEL_ELITE_IISC_SIGNAL", "DeepSeek-V3.2"),
     "sorbonne_puremath": _env("MODEL_ELITE_SORBONNE_PUREMATH", "DeepSeek-V3.2-Speciale"),
 }
 
 # --- Global Elite II (agents/global_elite_100.py) — 100 сеньоров ---
-# Ни одной роли на gpt-5.5 — сознательно, чтобы не растягивать самый
+# Ни одной роли на gpt-5.6-terra — сознательно, чтобы не растягивать самый
 # дорогой уровень на 100 новых позиций. Та же логика балансировки по
 # 13 моделям (gpt-5.4 + 12 сторонних), что и в Global Elite I.
 GLOBAL_ELITE_2_MODEL_ASSIGNMENTS = {
