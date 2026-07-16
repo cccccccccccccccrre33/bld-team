@@ -30,7 +30,8 @@ from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, fair_sample, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
+from workflows._common import ask, compile_brief, curate_knowledge, extract_next_step, fair_sample, looks_like_meta_complaint, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
+from workflows.cto_approval import cto_approval
 
 MAX_TURNS = 10  # раунды разговора в паре/тройке — короче группового заседания
 
@@ -158,9 +159,11 @@ async def main():
     record_participation(*group_names)
     print(f"Группа: {', '.join(group_names)}")
 
+    has_code_access = any(n in CODE_ACCESS_ROLES for n in group_names)
+
     # Если в группу попал кто-то с доступом к коду — на всякий случай
     # синхронизируем репозитории (могут понадобиться tools).
-    if any(n in CODE_ACCESS_ROLES for n in group_names) and not repo_hint:
+    if has_code_access and not repo_hint:
         print("Синхронизация репозиториев...")
         if not await sync_repos_or_alert():
             return
@@ -179,9 +182,47 @@ async def main():
     report = await compile_solution_report(group_names, problem, transcript)
 
     print(f"\n{'=' * 60}\n{report}")
-    send_telegram_report(report)
+    brief = await compile_brief(report, context_hint="сессия Лаборатории — сравнение предложенных решений")
+    send_telegram_report(brief)
 
     await curate_knowledge("Лаборатория", report)
+
+    # Раньше на этом всё заканчивалось — отчёт уходил в Telegram, и
+    # даже если пара пришла к конкретной рекомендации, реализация не
+    # запускалась НИКЕМ. Теперь: если у группы был доступ к коду и
+    # рекомендация конкретна — это уходит на решение CTO (без участия
+    # основателя), и при одобрении реализуется реальной инженерной
+    # командой, как и любая другая задача в компании.
+    if not has_code_access:
+        return
+
+    secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
+    task = await extract_next_step(report, secretary_client)
+    print(f"\nВозможная задача для реализации: {task}")
+
+    if looks_like_meta_complaint(task):
+        print("Похоже на неосмысленную задачу (жалоба модели на нехватку данных) — не эскалируем.")
+        return
+
+    approved, comment = await cto_approval(
+        squad_label=f"Лаборатория ({', '.join(group_names)})",
+        task_title=task,
+        reason="Родилось из рабочей сессии в паре/тройке — см. рекомендацию в отчёте выше.",
+        how="См. полный отчёт выше — там сравнение вариантов и обоснование.",
+    )
+    verdict_msg = f"🧭 CTO по итогам Лаборатории: {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
+    send_telegram_report(verdict_msg)
+    if not approved:
+        return
+
+    print("CTO одобрил — запускаем реализацию...")
+    from workflows.engineering_task import run_engineering_task
+
+    engineering_report = await run_engineering_task(task)
+    full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ\n\n{engineering_report}"
+    engineering_brief = await compile_brief(full, context_hint="реализация по итогам Лаборатории")
+    send_telegram_report(engineering_brief)
+    await curate_knowledge(f"Лаборатория → реализовано: {', '.join(group_names)}", f"{verdict_msg}\n\n{full}")
 
 
 if __name__ == "__main__":
