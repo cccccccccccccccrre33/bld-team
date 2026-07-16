@@ -21,7 +21,7 @@ from agents.roster import build_full_roster
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from config.client_factory import get_chat_client
 from tools.telegram_report import send_telegram_report
-from workflows._common import ask, fair_sample, record_participation
+from workflows._common import ask, fair_sample, record_participation, safe_agent_run
 
 MAX_EXCHANGES = 5  # вопрос-ответ пар — это разговор, не допрос
 
@@ -39,7 +39,11 @@ ROLE_LABELS = {
 
 async def run_interview(hr_agent, interviewee_agent, interviewee_name: str) -> list[Message]:
     """HR ведёт разговор 1-на-1: чередование вопрос (HR) -> ответ
-    (собеседник), с полной историей на каждом шаге."""
+    (собеседник), с полной историей на каждом шаге.
+
+    Каждый ход защищён safe_agent_run — если у HR или у собеседника
+    модель временно недоступна, этот ход пропускается (без сообщения
+    в стенограмме), а не роняет весь разговор."""
 
     history: list[Message] = [
         Message(
@@ -55,11 +59,13 @@ async def run_interview(hr_agent, interviewee_agent, interviewee_name: str) -> l
     ]
     transcript: list[Message] = []
 
-    speaker_order = [hr_agent, interviewee_agent]
+    speaker_order = [("hr", hr_agent), (interviewee_name, interviewee_agent)]
     for i in range(MAX_EXCHANGES * 2):
-        agent = speaker_order[i % 2]
-        response = await agent.run(history)
-        msg = Message(role="assistant", contents=[response.text], author_name=agent.name)
+        label, agent = speaker_order[i % 2]
+        text = await safe_agent_run(agent, history, person_label=label)
+        if text is None:
+            continue
+        msg = Message(role="assistant", contents=[text], author_name=agent.name)
         history.append(msg)
         transcript.append(msg)
 
@@ -113,6 +119,12 @@ async def main():
 
     print(f"HR вызывает на разговор: {interviewee_name}")
     transcript = await run_interview(hr_agent, interviewee_agent, interviewee_name)
+
+    if len(transcript) < 2:
+        warning = f"⚠️ HR 1-на-1 с {interviewee_name} не состоялся — модели временно недоступны."
+        print(warning)
+        send_telegram_report(warning)
+        return
 
     for msg in transcript:
         label = ROLE_LABELS.get(msg.author_name or "", msg.author_name or "?")
