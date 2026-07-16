@@ -11,7 +11,6 @@
 """
 
 import asyncio
-from datetime import datetime
 
 from agents.engineering import build_specialist_pool
 from agents.squads import SQUADS
