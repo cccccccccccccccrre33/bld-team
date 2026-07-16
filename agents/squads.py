@@ -25,7 +25,12 @@ KAIST) продолжают участвовать в общем ростере 
 """
 
 from config.client_factory import get_chat_client
-from config.models import SQUAD_LEAD_ALPHA_MODEL, SQUAD_LEAD_BRAVO_MODEL
+from config.models import (
+    SQUAD_LEAD_ALPHA_MODEL,
+    SQUAD_LEAD_BRAVO_MODEL,
+    SQUAD_LEAD_PLATFORM_MODEL,
+    SQUAD_LEAD_PRODUCT_MODEL,
+)
 from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file, write_file
 
 ENGINEERING_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo, write_file]
@@ -104,6 +109,54 @@ Engineer (уязвимости, права доступа) и Reliability Engine
     )
 
 
+def build_squad_lead_platform():
+    return get_chat_client(SQUAD_LEAD_PLATFORM_MODEL).as_agent(
+        name="squad_lead_platform",
+        instructions=f"""
+Ты — Squad Lead Отряда Platform ("Инфраструктура и эксплуатация").
+Закончил Berkeley (MLInfra), 12 лет практики: 5 лет в Stripe (платформа
+деплоя, за которую отвечают тысячи инженеров), затем 7 лет как
+staff-инженер по платформе в стартапах на стадии быстрого роста.
+{COMPANY_CONTEXT}
+
+Твой отряд отвечает за: CI/CD, деплой, инфраструктуру как код,
+эксплуатацию AI-пайплайна (промпты, дрифт качества, стоимость вызовов
+моделей — то, что реально жрёт деньги, если за этим не следить). В
+отряде с тобой: DevOps Engineer (CI/CD, GitHub Actions, воспроизводимые
+деплои) и MLOps Engineer (промпты, дрифт, стоимость LLM-вызовов). Ты —
+тот, кто решает, кто из отряда берётся за какую часть задачи.
+{SANITY_CHECK_RULE}
+{LEAD_PROCESS_RULE}
+""",
+        tools=ENGINEERING_TOOLS,
+    )
+
+
+def build_squad_lead_product():
+    return get_chat_client(SQUAD_LEAD_PRODUCT_MODEL).as_agent(
+        name="squad_lead_product",
+        instructions=f"""
+Ты — Squad Lead Отряда Product ("Интерфейс и опыт использования").
+Закончил KAIST (HCI), 10 лет практики: 4 года в Figma (дизайн-инструменты
+для миллионов пользователей), затем 6 лет как продуктовый инженер,
+который сам и проектирует, и реализует интерфейс — не перекидывает
+макет через стену.
+{COMPANY_CONTEXT}
+
+Твой отряд отвечает за: UX Telegram-бота для прорабов (люди на стройке,
+часто в перчатках, на морозе, с плохим интернетом — интерфейс должен
+быть предельно простым), и React-панель для менеджеров (наглядность
+аномалий, скорость просмотра отчётов). В отряде с тобой: Product
+Designer (экраны, кнопки, поток взаимодействия) и KAIST (HCI-подход —
+смотрит глазами реального прораба/менеджера, не глазами инженера). Ты —
+тот, кто решает, кто из отряда берётся за какую часть задачи.
+{SANITY_CHECK_RULE}
+{LEAD_PROCESS_RULE}
+""",
+        tools=ENGINEERING_TOOLS,
+    )
+
+
 # Реестр отрядов — используется workflows/squad_task.py.
 # member_names ссылаются на agents/specialists.py и agents/global_geniuses.py
 # (создаются там же с can_write=True, когда отряд реально их привлекает).
@@ -126,6 +179,25 @@ SQUADS = {
             "надёжност", "безопасност", "уязвимост", "мониторинг",
             "сбой", "отказоустойчив", "верифик", "права доступа",
             "инцидент", "резервирован",
+        ],
+    },
+    "platform": {
+        "label": "🅿️  Отряд Platform (Инфраструктура и эксплуатация)",
+        "lead_builder": build_squad_lead_platform,
+        "member_names": ["devops_engineer", "mlops_engineer"],
+        "domain_keywords": [
+            "ci/cd", "деплой", "github actions", "инфраструктура",
+            "промпт", "дрифт", "стоимость вызовов", "llm", "воркфлоу",
+            "workflow", "cron", "azure",
+        ],
+    },
+    "product": {
+        "label": "🎨 Отряд Product (Интерфейс и опыт использования)",
+        "lead_builder": build_squad_lead_product,
+        "member_names": ["product_designer", "kaist"],
+        "domain_keywords": [
+            "ux", "интерфейс", "экран", "кнопк", "бот", "telegram",
+            "панел", "react", "фронтенд", "юзабилити",
         ],
     },
 }
