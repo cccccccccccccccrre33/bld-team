@@ -39,11 +39,13 @@ from agents.squads import SQUADS
 
 
 def assign_task_to_squad(task: str) -> str:
-    """По ключевым словам решает, какому отряду ближе задача. Если
-    непонятно — по умолчанию Альфа (ядро/данные), т.к. большинство
-    задач у BLD пока про сам движок/данные, а не про надёжность/security."""
+    """По ключевым словам решает, какому отряду ближе задача. Порядок
+    проверки — от самых специфичных зон к самой общей: security/
+    надёжность (bravo), инфраструктура (platform), интерфейс (product),
+    и только затем ядро/данные (alpha). Если непонятно — по умолчанию
+    alpha, т.к. большинство задач у BLD пока про сам движок/данные."""
     lowered = task.lower()
-    for key in ("bravo", "alpha"):
+    for key in ("bravo", "platform", "product", "alpha"):
         if any(kw in lowered for kw in SQUADS[key]["domain_keywords"]):
             return key
     return "alpha"
@@ -292,21 +294,24 @@ async def main():
         await curate_knowledge("Совет директоров / Эстафета отрядов", report + "\n\n" + relay_report)
     else:
         target_squad = assign_task_to_squad(task)
-        other_squad = "bravo" if target_squad == "alpha" else "alpha"
+        other_squads = [k for k in SQUADS if k != target_squad]
 
-        # Ротация: чтобы простаивающий отряд не искал себе левую задачу
-        # каждый раз (это и создавало риск постоянного шума от
-        # несвязанных параллельных веток) — только через раз.
+        # Ротация: чтобы простаивающие отряды не искали себе левую
+        # задачу каждый раз (риск постоянного шума от несвязанных
+        # параллельных веток) — только через раз, и по кругу, а не
+        # всегда один и тот же (иначе при 4 отрядах 3 из них почти
+        # никогда бы не получали шанс работать самостоятельно).
         turn = load_rotation_turn("squad_idle_rotation")
-        if turn == 0:
+        if turn % 2 == 0:
+            idle_pick = other_squads[(turn // 2) % len(other_squads)]
             print(f"Задача уходит в {SQUADS[target_squad]['label']}; "
-                  f"по ротации {SQUADS[other_squad]['label']} тоже ищет себе задачу...")
-            tasks_by_squad = {target_squad: task, other_squad: None}
+                  f"по ротации {SQUADS[idle_pick]['label']} тоже ищет себе задачу...")
+            tasks_by_squad = {target_squad: task, idle_pick: None}
         else:
             print(f"Задача уходит только в {SQUADS[target_squad]['label']}; "
-                  f"{SQUADS[other_squad]['label']} отдыхает этот цикл (ротация)...")
+                  f"остальные отряды отдыхают этот цикл (ротация)...")
             tasks_by_squad = {target_squad: task}
-        save_rotation_turn("squad_idle_rotation", 1 - turn)
+        save_rotation_turn("squad_idle_rotation", turn + 1)
 
         squad_reports = await dispatch_squads(tasks_by_squad)
 
