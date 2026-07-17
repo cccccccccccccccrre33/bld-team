@@ -2,12 +2,14 @@ name: Squad Initiative
 
 on:
   schedule:
-    # 3 раза в день — 10:00, 15:00, 19:00 Киев (7, 12, 16 UTC)
-    - cron: '0 7,12,16 * * *'
+    # Было 3 раза/день на 2 отряда (6 запусков/день). Теперь 4 отряда —
+    # снижаем до 2 раз/день, чтобы не удвоить косты: 10:00, 17:00 Киев
+    # (7, 14 UTC) = 8 запусков/день, шире охват при похожем бюджете.
+    - cron: '0 7,14 * * *'
   workflow_dispatch:
     inputs:
       squad:
-        description: 'Какой отряд (пусто = оба)'
+        description: 'Какой отряд (пусто = все)'
         required: false
         default: ''
         type: choice
@@ -15,6 +17,8 @@ on:
           - ''
           - alpha
           - bravo
+          - platform
+          - product
 
 permissions:
   contents: write
