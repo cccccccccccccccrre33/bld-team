@@ -13,7 +13,7 @@ gtm_initiative.yml) — материалы полезны, только если
 from agents.gtm import build_gtm_lead
 from tools.repo_tools import clone_or_update_repos
 from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge
+from workflows._common import compile_brief, curate_knowledge, record_participation
 from workflows.task_board import add_task, get_board_summary, update_task_status
 
 ESCALATION_MARKER = "ТРЕБУЕТ ТЕБЯ"
@@ -42,6 +42,7 @@ write_gtm_doc, заверши текстовым резюме.
 """
     response = await lead.run(prompt)
     report_text = response.text.strip()
+    record_participation(lead.name)
 
     needs_founder = ESCALATION_MARKER in report_text.upper() or ESCALATION_MARKER in report_text
 
