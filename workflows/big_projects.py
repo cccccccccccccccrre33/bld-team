@@ -284,6 +284,15 @@ async def run_project_day(project_id: str) -> None:
 
     transition_summary = await assess_phase_transition(project)
     if transition_summary:
+        # КРИТИЧНО: assess_phase_transition() уже изменил project["phase"]
+        # и дописал в project["decisions"] — но save_project() выше был
+        # вызван ДО этого. Если не сохранить прямо здесь, переход фазы
+        # (например DIGEST->DESIGN) существует только в памяти этого
+        # тика и теряется навсегда: следующий запуск загрузит с диска
+        # старую фазу и повторит то же самое обсуждение заново — отсюда
+        # эффект "вечного перехода в DESIGN", который никогда не доходит
+        # до APPROVAL/IMPLEMENTATION.
+        save_project(project)
         send_telegram_report(f"✅ {project['title']} — фаза завершена: {transition_summary}\nПереход к фазе {project['phase']}.")
         await curate_knowledge(f"Проект {project_id}: фаза завершена", transition_summary)
 
