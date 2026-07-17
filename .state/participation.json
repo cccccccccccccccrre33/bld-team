@@ -13,7 +13,7 @@
   "ceo": "2026-07-15T21:57:06.433656",
   "language_compiler_architect": "2026-07-15T02:03:45.998489",
   "realtime_systems_architect": "2026-07-15T02:03:51.839828",
-  "utokyo": "2026-07-15T05:14:39.984832",
+  "utokyo": "2026-07-17T19:57:52.643245",
   "ustc": "2026-07-17T16:39:49.956815",
   "algorithmic_performance_sorcerer": "2026-07-15T05:14:57.797038",
   "berkeley_mlinfra": "2026-07-17T11:19:57.211058",
@@ -40,7 +40,7 @@
   "tsinghua": "2026-07-15T16:50:18.787278",
   "principal_systems_architect": "2026-07-17T15:05:26.774788",
   "sydney_sensor_fusion": "2026-07-15T19:05:48.342368",
-  "stanford": "2026-07-17T19:57:51.828357",
+  "stanford": "2026-07-17T19:57:52.643245",
   "sustech_capacity": "2026-07-17T07:56:12.001924",
   "odesa_mechnikov_monobankux": "2026-07-16T21:33:30.085129",
   "itmo": "2026-07-15T20:32:39.812888",
@@ -142,5 +142,6 @@
   "nankai_puremath": "2026-07-17T18:03:44.148223",
   "pku_recsys": "2026-07-17T19:02:30.208099",
   "physics_informed_ml_engineer": "2026-07-17T19:57:49.811978",
-  "mlops_engineer": "2026-07-17T19:57:51.828357"
+  "mlops_engineer": "2026-07-17T19:57:51.828357",
+  "epfl_distsys": "2026-07-17T19:57:52.643245"
 }
