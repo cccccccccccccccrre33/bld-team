@@ -17,7 +17,7 @@ from agents.squads import SQUADS
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo
-from workflows._common import load_task_board, save_task_board_entry
+from workflows._common import load_task_board, record_participation, save_task_board_entry
 from workflows.engineering_task import run_engineering_task
 
 RISK_KEYWORDS = [
@@ -124,7 +124,9 @@ async def run_squad_task(squad_key: str, task: str | None = None) -> str:
         lead_agent=lead,
         lead_label=f"Squad Lead ({squad['label']})",
         helper_pool=squad_pool,
+        force_consult=True,
     )
+    record_participation(lead.name, *squad_pool.keys())
     return f"{squad['label']}\n\n{report}"
 
 
@@ -206,9 +208,11 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
     print(create_branch(repo_name, branch_name))
 
     findings = []
+    leads_by_squad = {}
     for squad_key in order:
         squad = SQUADS[squad_key]
         lead = squad["lead_builder"]()
+        leads_by_squad[squad_key] = lead
         prev_summary = "\n\n".join(findings) if findings else "(это первая часть работы — ты начинаешь)"
 
         prompt = f"""
@@ -229,6 +233,7 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
         findings.append(f"{squad['label']}:\n{response.text.strip()}")
 
     engineering_summary = "\n\n".join(findings)
+    record_participation(*(leads_by_squad[k].name for k in order))
 
     print("[relay] Коммитим объединённое изменение...")
     push_result = commit_and_push(repo_name, branch_name, f"AI engineering (relay): {task[:60]}")
