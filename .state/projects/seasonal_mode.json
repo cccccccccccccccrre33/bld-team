@@ -1,7 +1,7 @@
 {
   "id": "seasonal_mode",
   "title": "Сезонный режим BLD System (пик стройки vs межсезонье)",
-  "phase": "DIGEST",
+  "phase": "DESIGN",
   "log": [
     {
       "date": "17.07 09:48",
@@ -704,6 +704,12 @@
       "text": "**DIGEST: bootstrap сезонного контура при отсутствии достаточной истории (грани data_reuse + business_retention)**\n\n### 1. Математический фундамент (геометрическая интуиция)\nEvidence space BLD — это многообразие с естественной сезонной периодичностью. Каждый проект описывается траекторией в координатах (материал, объём, стоимость, cumulative deviation, trust). Полный строительный сезон — почти замкнутая кривая на этом многообразии; carry-over и переходящие остатки превращают её в спираль. Аномал"
     }
   ],
-  "decisions": [],
+  "decisions": [
+    {
+      "phase_completed": "DIGEST",
+      "summary": "зафиксировано единое решение — без global summer/winter switch и без блокировок; делаем постоянный owner-facing контур `Season Review / Closure Readiness / Budget Prep` как отдельный раздел UI, а в backend — новый seasonal aggregation layer (dedup от correlated inflation) поверх L1–L9: ядро сигналов L1/L3/L6, L9 только как confidence, выход — owner-safe `SeasonalFinding`/рекомендации.",
+      "date": "2026-07-17T18:06:17.631509"
+    }
+  ],
   "created": "2026-07-17T09:46:05.766725"
 }
