@@ -40,7 +40,7 @@
   "tsinghua": "2026-07-15T16:50:18.787278",
   "principal_systems_architect": "2026-07-17T15:05:26.774788",
   "sydney_sensor_fusion": "2026-07-15T19:05:48.342368",
-  "stanford": "2026-07-17T19:57:51.042237",
+  "stanford": "2026-07-17T19:57:51.828357",
   "sustech_capacity": "2026-07-17T07:56:12.001924",
   "odesa_mechnikov_monobankux": "2026-07-16T21:33:30.085129",
   "itmo": "2026-07-15T20:32:39.812888",
@@ -99,7 +99,7 @@
   "data_platform_architect": "2026-07-17T05:28:01.238816",
   "gatech_dr": "2026-07-17T07:33:26.596522",
   "chongqing_finops": "2026-07-17T16:09:34.473592",
-  "pku": "2026-07-17T18:03:43.151302",
+  "pku": "2026-07-17T19:57:51.828357",
   "hkust_ml_theory": "2026-07-17T15:05:24.418036",
   "neu_china_microservices": "2026-07-17T07:51:49.250380",
   "vienna_nudge": "2026-07-17T18:03:43.151302",
@@ -141,5 +141,6 @@
   "zurich_marketdesign": "2026-07-17T18:03:44.148223",
   "nankai_puremath": "2026-07-17T18:03:44.148223",
   "pku_recsys": "2026-07-17T19:02:30.208099",
-  "physics_informed_ml_engineer": "2026-07-17T19:57:49.811978"
+  "physics_informed_ml_engineer": "2026-07-17T19:57:49.811978",
+  "mlops_engineer": "2026-07-17T19:57:51.828357"
 }
