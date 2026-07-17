@@ -94,16 +94,29 @@ async def run_engineering_task(
     lead_model: str | None = None,
     helper_pool: dict | None = None,
     branch_prefix: str = "ai-eng",
+    force_consult: bool = False,
 ) -> str:
     """Полный цикл: ветка -> лид пишет код -> (опционально) привлекает
     помощь -> коммит/пуш -> Review Gate -> (опционально) переделка по
     вето -> отчёт.
 
     По умолчанию (без доп. параметров) — старое поведение: одиночный
-    лид-инженер (gpt-5.6-terra) + полный пул из 13 специалистов. Параметры
-    lead_agent/helper_pool позволяют переиспользовать эту же логику
-    для постоянных отрядов (workflows/squad_task.py) — свой лид, свой
-    ограниченный пул участников отряда.
+    лид-инженер (gpt-5.6-terra) + полный пул из 13 специалистов, участники
+    подключаются только если лид сам попросил помощи (HELP_KEYWORDS) —
+    осознанный компромис для разовых задач совета/правления, чтобы не
+    тратить лишние вызовы там, где лид реально справляется один.
+
+    force_consult=True — для ПОСТОЯННЫХ отрядов (workflows/squad_task.py):
+    в отряде всего 2 участника, и если полагаться на то, что лид сам
+    догадается попросить помощи текстом, они по факту никогда не
+    привлекаются (сильная модель почти всегда решает небольшую задачу
+    сама, ни разу не произнеся нужную фразу) — то есть отряд существует
+    только на бумаге. При force_consult оба участника отряда каждый раз
+    реально смотрят на результат лида в своей специализации — либо
+    находят, что улучшить именно в своей части (и правят через
+    write_file), либо явно подтверждают, что не видят проблем. Это не
+    бесплатно (+2 вызова модели на каждую задачу отряда), но иначе
+    "отряд" — это просто один человек с красивым названием.
     """
     repo_name = repo_name or guess_repo(task)
     branch_name = AI_BRANCH_NAME
@@ -136,19 +149,37 @@ async def run_engineering_task(
         )
 
     findings = [f"👷‍♂️ {lead_label} ({lead_model}):\n{lead_summary}"]
+    consulted_names: list[str] = []
 
-    if any(kw in lead_summary.lower() for kw in HELP_KEYWORDS) and pool:
+    if force_consult and pool:
+        matched_names = list(pool.keys())
+    elif any(kw in lead_summary.lower() for kw in HELP_KEYWORDS) and pool:
         matched_names = [n for n in find_matching_specialists(lead_summary, max_specialists=2) if n in pool]
         if not matched_names:
             import random
             matched_names = [random.choice(list(pool.keys()))]
+    else:
+        matched_names = []
 
+    if matched_names:
         print(f"{lead_label} запросил помощь — привлекаем: {', '.join(matched_names)}...")
 
         for name in matched_names:
             specialist = pool[name]
             label = ALL_SPECIALIST_LABELS.get(name, name)
             model_name = ALL_SPECIALIST_MODELS.get(name, "?")
+            review_note = (
+                "Ты — постоянный участник этого отряда, не разовая помощь по\n"
+                "запросу: смотри на результат лида в своей специализации при\n"
+                "КАЖДОЙ задаче отряда. Если видишь, что стоит поправить/\n"
+                "добавить именно в твоей части — сделай через write_file. Если\n"
+                "по-честному не видишь, что улучшить — так и скажи прямо в 1-2\n"
+                "предложениях, не пиши код ради самого факта участия.\n"
+                if force_consult
+                else "Ты привлечён именно потому, что часть оставшейся работы\n"
+                "совпадает с твоей специализацией. Определи свою часть и\n"
+                "реализуй её через write_file.\n"
+            )
             specialist_prompt = f"""
 {lead_label} оставил такое описание задачи и своей части работы:
 
@@ -157,12 +188,10 @@ async def run_engineering_task(
 Полная исходная задача: {task}
 Репозиторий: {repo_name}, ветка {branch_name} (уже текущая).
 
-Ты привлечён именно потому, что часть оставшейся работы совпадает с
-твоей специализацией. Определи свою часть и реализуй её через
-write_file.
-"""
+{review_note}"""
             specialist_response = await specialist.run(specialist_prompt)
             findings.append(f"{label} ({model_name}):\n{specialist_response.text.strip()}")
+            consulted_names.append(name)
 
     print("Коммитим и пушим изменения...")
     push_result = commit_and_push(repo_name, branch_name, f"AI engineering: {task[:60]}")
