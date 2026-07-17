@@ -40,7 +40,7 @@
   "tsinghua": "2026-07-15T16:50:18.787278",
   "principal_systems_architect": "2026-07-15T17:46:40.160399",
   "sydney_sensor_fusion": "2026-07-15T19:05:48.342368",
-  "stanford": "2026-07-17T11:14:01.630627",
+  "stanford": "2026-07-17T11:14:02.588764",
   "sustech_capacity": "2026-07-17T07:56:12.001924",
   "odesa_mechnikov_monobankux": "2026-07-16T21:33:30.085129",
   "itmo": "2026-07-15T20:32:39.812888",
@@ -111,5 +111,7 @@
   "whu_experimentation": "2026-07-17T09:46:15.743673",
   "tcd_audittrail": "2026-07-17T09:46:15.743673",
   "gtm_lead": "2026-07-17T10:29:31.983521",
-  "eth_robuststats": "2026-07-17T11:14:01.630627"
+  "eth_robuststats": "2026-07-17T11:14:01.630627",
+  "amsterdam_ranking": "2026-07-17T11:14:02.588764",
+  "ens_paris_modelresearch": "2026-07-17T11:14:02.588764"
 }
