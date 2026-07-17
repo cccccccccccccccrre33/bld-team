@@ -96,7 +96,7 @@
   "squad_lead_product": "2026-07-17T02:25:15.318126",
   "scut_queue": "2026-07-17T02:25:22.911165",
   "yonsei_uxresearch": "2026-07-17T13:01:29.604823",
-  "data_platform_architect": "2026-07-17T05:28:01.238816",
+  "data_platform_architect": "2026-07-17T20:00:35.653937",
   "gatech_dr": "2026-07-17T07:33:26.596522",
   "chongqing_finops": "2026-07-17T16:09:34.473592",
   "pku": "2026-07-17T19:57:51.828357",
@@ -143,5 +143,6 @@
   "pku_recsys": "2026-07-17T19:02:30.208099",
   "physics_informed_ml_engineer": "2026-07-17T19:57:49.811978",
   "mlops_engineer": "2026-07-17T19:57:51.828357",
-  "epfl_distsys": "2026-07-17T19:57:52.643245"
+  "epfl_distsys": "2026-07-17T19:57:52.643245",
+  "hse_demandforecast": "2026-07-17T20:00:35.653937"
 }
