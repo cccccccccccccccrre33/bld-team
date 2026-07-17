@@ -1,0 +1,42 @@
+name: GTM Initiative
+
+on:
+  schedule:
+    # 1 раз в день, 12:00 Киев (9 UTC) — материалы полезны, только
+    # если Валик успевает их использовать между запусками; штамповать
+    # черновики впрок несколько раз в день смысла не имеет.
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  initiative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run GTM initiative
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main_gtm_initiative.py
