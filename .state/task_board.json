@@ -249,7 +249,17 @@
       "how": "",
       "created": "17.07.2026 07:59",
       "cto_comment": ""
+    },
+    {
+      "id": "gtm-20260717102933",
+      "title": "Сделал один полезный GTM-артефакт: `sales-script-v1.md`.",
+      "squad": "gtm",
+      "status": "needs_founder_decision",
+      "reason": "Автономная инициатива GTM-департамента.",
+      "how": "Документ сохранён в gtm-materials/.",
+      "created": "17.07.2026 10:29",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "17.07.2026 07:59"
+  "last_updated": "17.07.2026 10:29"
 }
