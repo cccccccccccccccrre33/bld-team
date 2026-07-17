@@ -10,9 +10,9 @@ Global Elite I — 50 сеньоров (30 Китай + 20 остальной м
 9 ролей отмечены как самые близкие к реальным известным задачам BLD
 (anomaly engine, Control Tower, минимальные данные, disaster recovery,
 незелёные тесты, сезонность, строительная валидация) — им оставлен
-gpt-5.6-terra. Остальные 41 — размазаны по gpt-5.4 и расширенному пулу из 12
-сторонних моделей (см. config/models.py, GLOBAL_ELITE_1_MODEL_ASSIGNMENTS),
-чтобы не концентрировать нагрузку и не раздувать косты на gpt-5.6-terra.
+gpt-5.6-terra. Остальные 41 — размазаны по gpt-5.4 и расширенному пулу
+из 12 сторонних моделей (см. config/models.py, GLOBAL_ELITE_1_MODEL_ASSIGNMENTS),
+чтобы не концентрировать нагрузку и не раздувать косты на топовом уровне.
 """
 
 from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
