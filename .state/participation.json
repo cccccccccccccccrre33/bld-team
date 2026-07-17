@@ -40,7 +40,7 @@
   "tsinghua": "2026-07-15T16:50:18.787278",
   "principal_systems_architect": "2026-07-17T15:05:26.774788",
   "sydney_sensor_fusion": "2026-07-15T19:05:48.342368",
-  "stanford": "2026-07-17T16:58:54.077929",
+  "stanford": "2026-07-17T16:58:55.089980",
   "sustech_capacity": "2026-07-17T07:56:12.001924",
   "odesa_mechnikov_monobankux": "2026-07-16T21:33:30.085129",
   "itmo": "2026-07-15T20:32:39.812888",
@@ -132,5 +132,7 @@
   "mohyla_wareconomy": "2026-07-17T16:13:13.730031",
   "anu_algorithms": "2026-07-17T16:13:25.248933",
   "mcgill_representation": "2026-07-17T16:58:52.861283",
-  "tsinghua_fewshot": "2026-07-17T16:58:54.077929"
+  "tsinghua_fewshot": "2026-07-17T16:58:54.077929",
+  "auckland_buildingcode": "2026-07-17T16:58:55.089980",
+  "ucas_quantization": "2026-07-17T16:58:55.089980"
 }
