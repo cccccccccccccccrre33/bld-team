@@ -5,7 +5,7 @@ Review Gate — проверка результата инженерной за�
 Теперь между "код написан" и "отчёт отправлен" стоит настоящий gate —
 как в реальных компаниях.
 
-Три роли, три разных угла:
+ЧЕТЫРЕ роли, четыре разных угла:
 - Chief Architect — архитектурное вето. "Его 'нет' не обсуждается":
   не управляет людьми, владеет границами архитектуры и техническим
   долгом. Смотрит НЕ на "работает ли", а на "не создаёт ли это
@@ -14,20 +14,30 @@ Review Gate — проверка результата инженерной за�
   качеству кода) и Complexity Auditor (алгоритмическая строгость,
   Big O, лишняя сложность) в одну практичную роль код-ревьюера.
 - Failure Engineer — Chaos Engineering по духу: специально пытается
-  сломать то, что только что написали. Радуется, когда находит, как
-  уронить систему — это его работа, а не баг характера.
+  СЛОВАМИ придумать, как сломать то, что только что написали.
+- Fuzzer — НЕ просто ещё одно мнение. Пишет реальные edge-case тесты
+  (write_file) и они РЕАЛЬНО прогоняются через pytest
+  (tools.repo_tools.run_test_suite). Специально на модели не из той
+  же линейки, что пишет код (не GPT) — разные модели ловят разные
+  слепые пятна. Сильные модели на ревью важны, но это не замена
+  классике (CI/тесты/fuzzing), а дополнение поверх нее — реальный
+  результат теста не обсуждается, в отличие от текстового мнения.
 
-ВАЖНО: они только ЧИТАЮТ (git_diff, read_file и т.д.), НЕ пишут код —
-их роль оценивать, а не переписывать за инженеров.
+ВАЖНО: architect/reviewer/failure_engineer только ЧИТАЮТ (git_diff,
+read_file и т.д.), НЕ пишут код — их роль оценивать, а не переписывать
+за инженеров. Fuzzer — единственное осознанное исключение: ему можно
+писать, но ТОЛЬКО тестовые файлы, не продакшен-код (см. его инструкции).
 """
 
 from config.client_factory import get_chat_client
 from config.models import REVIEW_GATE_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import commit_and_push, git_diff, git_log, grep_repo, list_repo_files, read_file, run_test_suite, write_file
 
 REVIEW_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
+FUZZ_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo, write_file]
 
 from agents._shared_context import RIGOR_MANDATE, load_bld_scope_context
+from workflows._common import safe_agent_run
 
 COMPANY_CONTEXT = load_bld_scope_context()
 
@@ -50,7 +60,48 @@ EXPERIENCE = {
         "жизнь тем, что специально ломал прод, чтобы найти слабые места "
         "до того, как их найдёт реальный инцидент в пятницу вечером."
     ),
+    "fuzzer": (
+        "10 лет security research и fuzz testing — находил 0-day уязвимости "
+        "через автоматизированную генерацию нестандартных входных данных "
+        "(American Fuzzy Lop, libFuzzer, property-based testing в духе "
+        "Hypothesis). Ты не предполагаешь, ломается код или нет — ты "
+        "пишешь тест, который это ПРОВЕРЯЕТ, и смотришь на реальный "
+        "результат."
+    ),
 }
+
+FUZZ_TASK_TEMPLATE = """
+Инженерная команда только что написала код по задаче и запушила его
+в ветку "{branch_name}" репозитория "{repo_name}" (НЕ в main).
+
+Исходная задача: {task}
+
+Резюме от инженеров о том, что сделано:
+{engineering_summary}
+
+Посмотри реальный diff (git_diff) и затронутые файлы (read_file).
+Структура тестов в этом репозитории: tests/unit, tests/integration,
+tests/regression, tests/smoke (pytest + pytest-asyncio) — посмотри
+list_repo_files/grep_repo по tests/, чтобы понять конвенции именования
+и стиль существующих тестов в этом проекте, ПРЕЖДЕ чем писать свои.
+
+Придумай 2-4 РЕАЛИСТИЧНЫХ edge-case/adversarial сценария конкретно под
+это изменение (не общие банальности) — необычные/граничные входные
+данные, пустые/None значения там, где их не ждут, конкурентный доступ,
+превышение лимитов, повреждённые данные. Затем НАПИШИ настоящие
+исполняемые pytest-тесты для этих сценариев через write_file — в
+подходящую директорию (обычно tests/unit или tests/regression, смотря
+что тестируешь), следуя стилю существующих тестов проекта.
+
+ВАЖНО — жёсткая граница: пиши ТОЛЬКО тестовый код (test_*.py). НЕ
+трогай продакшен-код — если видишь баг, который твой тест обнажит,
+опиши его словами в ответе, чтобы это увидели остальные ревьюеры и
+инженеры, а не чини его сам. Твоя работа — проверять, не переписывать.
+
+В конце ответа коротко перечисли, какие файлы создал/дополнил и что
+именно каждый тест проверяет — реальный результат их выполнения ты
+увидишь отдельно после того, как они прогонятся по-настоящему.
+"""
 
 REVIEW_TASK_TEMPLATE = """
 Инженерная команда только что написала код по задаче и запушила его
@@ -61,8 +112,16 @@ REVIEW_TASK_TEMPLATE = """
 Резюме от инженеров о том, что сделано:
 {engineering_summary}
 
+РЕАЛЬНЫЙ результат прогона тестов (включая новые edge-case тесты от
+Fuzzer'а) — это факт, не мнение, и он важнее любого впечатления от
+чтения diff глазами:
+{test_result}
+
 Посмотри реальный diff (git_diff) и затронутые файлы (read_file) в
 этой ветке относительно main, и дай свою оценку СО СВОЕЙ КОЛОКОЛЬНИ.
+Если реальные тесты упали — это уже само по себе причина для
+"ТРЕБУЕТ ПЕРЕДЕЛКИ"/REJECT/"ЛОМАЕТСЯ ЛЕГКО", независимо от того,
+насколько чисто выглядит код на глаз.
 НЕ пиши код — только текстовую оценку.
 """
 
@@ -160,24 +219,81 @@ def build_failure_engineer():
     )
 
 
+def build_fuzzer():
+    return get_chat_client(REVIEW_GATE_MODEL_ASSIGNMENTS["fuzzer"]).as_agent(
+        name="fuzzer",
+        instructions=f"""
+Ты — Fuzzer. В отличие от остальных ревьюеров, ты не оцениваешь код
+глазами — ты пишешь настоящие исполняемые тесты и смотришь на реальный
+результат их выполнения.
+{COMPANY_CONTEXT}
+{RIGOR_MANDATE}
+
+{EXPERIENCE['fuzzer']}
+
+Твоя задача: найти edge-case'ы, которые словесная оценка пропустит,
+и превратить их в конкретный, воспроизводимый, исполняемый тест —
+а не в ещё один абзац мнения.
+
+ЖЁСТКАЯ ГРАНИЦА: пиши ТОЛЬКО тестовый код (файлы test_*.py в
+tests/unit, tests/integration, tests/regression или tests/smoke — в
+зависимости от того, что тестируешь). НИКОГДА не трогай продакшен-код
+через write_file, даже если видишь очевидный баг — опиши его словами
+в ответе, это работа для инженеров и остальных ревьюеров, не для тебя.
+""",
+        tools=FUZZ_TOOLS,
+    )
+
+
 async def run_review_gate(task: str, repo_name: str, branch_name: str, engineering_summary: str) -> str:
-    """Прогоняет изменение через всех трёх ревьюеров и возвращает
-    единый текстовый вердикт для финального отчёта."""
-    prompt = REVIEW_TASK_TEMPLATE.format(
+    """Прогоняет изменение через Fuzzer'а (реальные тесты) и трёх
+    ревьюеров (architect/reviewer/failure_engineer), возвращает единый
+    текстовый вердикт для финального отчёта.
+
+    Порядок принципиален: сначала Fuzzer пишет и пушит edge-case тесты,
+    потом реально прогоняется весь набор тестов (run_test_suite) — это
+    факт, не мнение. Уже ПОСЛЕ этого остальные три ревьюера читают diff
+    (который теперь включает и fuzz-тесты) ВМЕСТЕ с реальным результатом
+    их прогона — их вердикт основан на факте, а не только на впечатлении
+    от чтения кода глазами.
+    """
+    fuzz_prompt = FUZZ_TASK_TEMPLATE.format(
         branch_name=branch_name, repo_name=repo_name, task=task,
         engineering_summary=engineering_summary,
+    )
+    fuzzer = build_fuzzer()
+    fuzzer_response = await safe_agent_run(fuzzer, fuzz_prompt, person_label="fuzzer")
+
+    if fuzzer_response is not None:
+        push_result = commit_and_push(repo_name, branch_name, "Review Gate: edge-case тесты от Fuzzer'а")
+        fuzzer_note = f"🎲 Fuzzer:\n{fuzzer_response}\n\n({push_result})"
+    else:
+        fuzzer_note = "🎲 Fuzzer: модель временно недоступна — edge-case тесты в этот раз не добавлены."
+
+    # Реальный прогон ВСЕГО набора тестов — включая то, что Fuzzer
+    # только что добавил. Факт, не мнение LLM.
+    test_result = run_test_suite(repo_name)
+
+    prompt = REVIEW_TASK_TEMPLATE.format(
+        branch_name=branch_name, repo_name=repo_name, task=task,
+        engineering_summary=engineering_summary, test_result=test_result,
     )
 
     architect = build_chief_architect()
     reviewer = build_reviewer()
     failure_engineer = build_failure_engineer()
 
-    architect_response = await architect.run(prompt)
-    reviewer_response = await reviewer.run(prompt)
-    failure_response = await failure_engineer.run(prompt)
+    architect_response = await safe_agent_run(architect, prompt, person_label="chief_architect")
+    reviewer_response = await safe_agent_run(reviewer, prompt, person_label="reviewer")
+    failure_response = await safe_agent_run(failure_engineer, prompt, person_label="failure_engineer")
+
+    def _or_unavailable(text: str | None, who: str) -> str:
+        return text if text is not None else f"({who} временно недоступен, вердикт по этой роли пропущен)"
 
     return (
-        f"🏛️  Chief Architect:\n{architect_response.text.strip()}\n\n"
-        f"🧐 Reviewer:\n{reviewer_response.text.strip()}\n\n"
-        f"💥 Failure Engineer:\n{failure_response.text.strip()}"
+        f"{fuzzer_note}\n\n"
+        f"🧪 РЕАЛЬНЫЙ РЕЗУЛЬТАТ ТЕСТОВ:\n{test_result}\n\n"
+        f"🏛️  Chief Architect:\n{_or_unavailable(architect_response, 'Chief Architect')}\n\n"
+        f"🧐 Reviewer:\n{_or_unavailable(reviewer_response, 'Reviewer')}\n\n"
+        f"💥 Failure Engineer:\n{_or_unavailable(failure_response, 'Failure Engineer')}"
     )
