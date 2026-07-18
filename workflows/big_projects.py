@@ -338,7 +338,13 @@ async def run_project_day(project_id: str) -> None:
             if is_duplicate(part):
                 continue
             task_id = add_task(part, f"project:{project_id}", status="in_progress", reason=design_summary[:200])
-            report = await run_engineering_task(part)
+            try:
+                report = await run_engineering_task(part)
+            except Exception as e:
+                print(f"[{project_id}] run_engineering_task упал с исключением на части '{part}': {e}")
+                update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+                send_telegram_report(f"❌ Часть проекта «{project['title']}» упала с ошибкой: {part}\n\nОшибка: {e}")
+                continue
             update_task_status(task_id, "done")
             send_telegram_report(f"👷 РЕАЛИЗОВАНО (проект «{project['title']}»)\n\n{report}")
             await curate_knowledge(f"Проект {project_id}: реализовано", report)
