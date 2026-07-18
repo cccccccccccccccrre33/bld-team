@@ -31,7 +31,7 @@ from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from config.models import BOARD_MODEL_ASSIGNMENTS, EXPANSION_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
 from tools.repo_tools import AI_BRANCH_NAME, commit_and_push, create_branch, merge_branch_to_main
 from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, sync_repos_or_alert
+from workflows._common import compile_brief, curate_knowledge, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 
 ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS}
@@ -134,8 +134,17 @@ async def run_engineering_task(
 автоматически попадут в неё.
 """
     print(f"{lead_label} разбирается с задачей и пишет код...")
-    lead_response = await lead.run(prompt)
-    lead_summary = lead_response.text.strip()
+    lead_summary = await safe_agent_run(lead, prompt, person_label=f"{lead_label} ({lead_model})")
+
+    if lead_summary is None:
+        return (
+            f"⚠️ ИНЖЕНЕРНАЯ ЗАДАЧА НЕ ВЫПОЛНЕНА — МОДЕЛЬ НЕДОСТУПНА\n\n"
+            f"ЗАДАЧА: {task}\n\n"
+            f"{lead_label} ({lead_model}) не ответил после нескольких попыток "
+            "(транзиентная недоступность бэкенда, см. лог safe_agent_run). "
+            "Код не писался, ветка не тронута, review gate не запускался. "
+            "Нужно перезапустить задачу вручную."
+        )
 
     if "ЗАДАЧА НЕ ОСМЫСЛЕН" in lead_summary.upper():
         return (
@@ -171,8 +180,11 @@ async def run_engineering_task(
 твоей специализацией. Определи свою часть и реализуй её через
 write_file.
 """
-            specialist_response = await specialist.run(specialist_prompt)
-            findings.append(f"{label} ({model_name}):\n{specialist_response.text.strip()}")
+            specialist_text = await safe_agent_run(specialist, specialist_prompt, person_label=f"{label} ({model_name})")
+            if specialist_text is None:
+                findings.append(f"{label} ({model_name}): не ответил после нескольких попыток — пропущен, часть работы могла остаться нереализованной.")
+                continue
+            findings.append(f"{label} ({model_name}):\n{specialist_text}")
 
     print("Коммитим и пушим изменения...")
     push_result = commit_and_push(repo_name, branch_name, f"AI engineering: {task[:60]}")
@@ -202,8 +214,11 @@ Review Gate (Chief Architect / Reviewer / Failure Engineer — все
 замечания — не переписывай всё с нуля без необходимости. В конце
 кратко опиши, что именно исправил по каждому замечанию.
 """
-        rework_response = await lead.run(rework_prompt)
-        findings.append(f"🔄 {lead_label} (доработка по вето Review Gate):\n{rework_response.text.strip()}")
+        rework_text = await safe_agent_run(lead, rework_prompt, person_label=f"{lead_label} (доработка)")
+        if rework_text is None:
+            findings.append(f"🔄 {lead_label} (доработка по вето Review Gate): не ответил после нескольких попыток — доработка не выполнена, замечания Review Gate остались неисправленными.")
+        else:
+            findings.append(f"🔄 {lead_label} (доработка по вето Review Gate):\n{rework_text}")
         engineering_summary = "\n\n".join(findings)
 
         push_result_2 = commit_and_push(repo_name, branch_name, "AI engineering: доработка по замечаниям Review Gate")
