@@ -132,7 +132,7 @@
   "mohyla_wareconomy": "2026-07-17T16:13:13.730031",
   "anu_algorithms": "2026-07-17T16:13:25.248933",
   "mcgill_representation": "2026-07-17T16:58:52.861283",
-  "tsinghua_fewshot": "2026-07-17T16:58:54.077929",
+  "tsinghua_fewshot": "2026-07-18T11:47:17.060591",
   "auckland_buildingcode": "2026-07-17T16:58:55.089980",
   "ucas_quantization": "2026-07-17T16:58:55.089980",
   "technion": "2026-07-17T17:37:16.245201",
@@ -159,5 +159,6 @@
   "telaviv_threatmodel": "2026-07-18T07:30:11.715103",
   "swjtu_api": "2026-07-18T08:18:19.042906",
   "ural_b2bcompliance": "2026-07-18T08:18:32.827609",
-  "lviv_polytechnic_dataresidency": "2026-07-18T11:00:07.361890"
+  "lviv_polytechnic_dataresidency": "2026-07-18T11:00:07.361890",
+  "ubc_testing": "2026-07-18T11:47:17.060591"
 }
