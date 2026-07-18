@@ -218,7 +218,14 @@ async def main():
     print("CTO одобрил — запускаем реализацию...")
     from workflows.engineering_task import run_engineering_task
 
-    engineering_report = await run_engineering_task(task)
+    try:
+        engineering_report = await run_engineering_task(task)
+    except Exception as e:
+        print(f"[lab_session] run_engineering_task упал с исключением: {e}")
+        error_report = f"❌ РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ УПАЛА С ОШИБКОЙ\n\nЗадача: {task}\n\nОшибка: {e}"
+        print(error_report)
+        send_telegram_report(error_report)
+        return
     full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ\n\n{engineering_report}"
     engineering_brief = await compile_brief(full, context_hint="реализация по итогам Лаборатории")
     send_telegram_report(engineering_brief)
