@@ -201,13 +201,21 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
     print(f"{label} собирает команду: {', '.join(helper_names)}")
     fellow_writer = FELLOW_BUILDERS[fellow_key](can_write=True)
 
-    report = await run_engineering_task(
-        proposal["idea"],
-        repo_name="bld-system",  # Fellows работают ТОЛЬКО с bld-system, никогда с bld-panel
-        lead_agent=fellow_writer,
-        lead_label=f"{label} (тех. лид, команда: {', '.join(helper_names)})",
-        helper_pool=helper_pool,
-    )
+    try:
+        report = await run_engineering_task(
+            proposal["idea"],
+            repo_name="bld-system",  # Fellows работают ТОЛЬКО с bld-system, никогда с bld-panel
+            lead_agent=fellow_writer,
+            lead_label=f"{label} (тех. лид, команда: {', '.join(helper_names)})",
+            helper_pool=helper_pool,
+        )
+    except Exception as e:
+        print(f"[{fellow_key}] run_engineering_task упал с исключением: {e}")
+        update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+        error_report = f"❌ BREAKTHROUGH УПАЛ С ОШИБКОЙ — {label}\n\nИдея: {proposal['idea']}\n\nОшибка: {e}"
+        print(error_report)
+        send_telegram_report(error_report)
+        return error_report
     update_task_status(task_id, "done")
 
     full_report = f"🚀 BREAKTHROUGH РЕАЛИЗОВАН — {label}\n\n{report}"
