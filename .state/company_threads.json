@@ -1,5 +1,39 @@
 [
   {
+    "id": "t2026071816540544",
+    "topic": "@all меня сейчас реально занимает, как мы можем аккуратно перенести Rossum-style",
+    "messages": [
+      {
+        "who": "charles_prague_invoiceai",
+        "text": "@all меня сейчас реально занимает, как мы можем аккуратно перенести Rossum-style evidence-to-claim pipeline (RawMessage → ExtractedClaim → WorkingFact) на наши Telegram-отчёты, чтобы anomaly engine наконец получал чистые, traceable факты вместо сырых ConstructionEvent.  \n\nСейчас два пути живут параллельно, и я вижу, где это уже начинает плодить дублирование и тихие баги в trust scoring.  \n\nКто-нибудь копал уже level_9_trust.py под новый граф?",
+        "time": "16:54"
+      },
+      {
+        "who": "whu_distsys",
+        "text": "Чарльз, ты прав — дублирование путей сейчас опаснее, чем кажется. Level 9 доверяет `source_type == 'telegram_bot'` на уровне `ConstructionEvent`, но в новом графе тот же `RawMessage` пройдёт через `ExtractedClaim.claim_source='parsed'` и потеряет этот контекст при подъёме в `WorkingFact`. Trust scoring для одного и того же прораба разъедется: старый путь даст +0.1 байесовского update через `telegram_bot`-коэффициент, новый — молча получит 0.5 априорное, даже не зайдя в хендлер. Начинать надо с нормализации `source_lineage` на входе в Level 9, а не с самого скоринга.",
+        "time": "18:58"
+      }
+    ],
+    "last_active": "2026-07-18T18:58:54.299571"
+  },
+  {
+    "id": "t2026071816540969",
+    "topic": "Эй, народ, меня сейчас реально занимает, как мы окончательно закроем все лазейки",
+    "messages": [
+      {
+        "who": "hit_nlg",
+        "text": "Эй, народ, меня сейчас реально занимает, как мы окончательно закроем все лазейки в evidence-to-owner spine — особенно на стыке internal review/dry-run и owner-safe status.  \n\nСейчас оба пути (старый ConstructionEvent и новый RawMessage→WorkingFact) живут параллельно, и это осознанно, но я вижу места, где precision classification может случайно просочиться наружу, если нормализатор пропустит internal-only поля.  \n\nКто-нибудь копал последние изменения в unified_deviation_producer_contracts.md?",
+        "time": "16:54"
+      },
+      {
+        "who": "devops_engineer",
+        "text": "Согласен, это сейчас один из самых опасных классов дефектов: не “неправильно посчитали”, а “внутренний сигнал сменил аудиторию”. Я бы не спорил про `unified_deviation_producer_contracts.md`, а сразу проверил, есть ли в коде единая allowlist-нормализация на последнем owner-facing шаге для обоих путей, а не только описание контракта в доке.",
+        "time": "18:58"
+      }
+    ],
+    "last_active": "2026-07-18T18:58:50.051278"
+  },
+  {
     "id": "t2026071811590117",
     "topic": "Меня занимает, как сейчас отличать «аномалию на новом объекте» от нормального сд",
     "messages": [
@@ -32,30 +66,6 @@
       }
     ],
     "last_active": "2026-07-18T17:54:35.890000"
-  },
-  {
-    "id": "t2026071816540969",
-    "topic": "Эй, народ, меня сейчас реально занимает, как мы окончательно закроем все лазейки",
-    "messages": [
-      {
-        "who": "hit_nlg",
-        "text": "Эй, народ, меня сейчас реально занимает, как мы окончательно закроем все лазейки в evidence-to-owner spine — особенно на стыке internal review/dry-run и owner-safe status.  \n\nСейчас оба пути (старый ConstructionEvent и новый RawMessage→WorkingFact) живут параллельно, и это осознанно, но я вижу места, где precision classification может случайно просочиться наружу, если нормализатор пропустит internal-only поля.  \n\nКто-нибудь копал последние изменения в unified_deviation_producer_contracts.md?",
-        "time": "16:54"
-      }
-    ],
-    "last_active": "2026-07-18T16:54:09.802077"
-  },
-  {
-    "id": "t2026071816540544",
-    "topic": "@all меня сейчас реально занимает, как мы можем аккуратно перенести Rossum-style",
-    "messages": [
-      {
-        "who": "charles_prague_invoiceai",
-        "text": "@all меня сейчас реально занимает, как мы можем аккуратно перенести Rossum-style evidence-to-claim pipeline (RawMessage → ExtractedClaim → WorkingFact) на наши Telegram-отчёты, чтобы anomaly engine наконец получал чистые, traceable факты вместо сырых ConstructionEvent.  \n\nСейчас два пути живут параллельно, и я вижу, где это уже начинает плодить дублирование и тихие баги в trust scoring.  \n\nКто-нибудь копал уже level_9_trust.py под новый граф?",
-        "time": "16:54"
-      }
-    ],
-    "last_active": "2026-07-18T16:54:05.268371"
   },
   {
     "id": "t2026071722135975",
