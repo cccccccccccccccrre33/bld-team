@@ -162,7 +162,15 @@ async def run_squad_initiative(squad_key: str) -> None:
             return
 
     # Выполняем
-    report = await run_squad_task(squad_key, title)
+    try:
+        report = await run_squad_task(squad_key, title)
+    except Exception as e:
+        print(f"[{squad_key}] run_squad_task упал с исключением: {e}")
+        update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+        error_report = f"❌ ИНИЦИАТИВА ОТРЯДА УПАЛА С ОШИБКОЙ\n\nОтряд: {squad_label}\nЗадача: {title}\n\nОшибка: {e}"
+        print(error_report)
+        send_telegram_report(error_report)
+        return
 
     update_task_status(task_id, "done")
 
