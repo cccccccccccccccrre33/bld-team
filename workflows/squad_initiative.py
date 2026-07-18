@@ -14,7 +14,9 @@
 """
 
 import asyncio
+import json
 import sys
+from pathlib import Path
 
 from agents.squads import SQUADS
 from tools.repo_tools import clone_or_update_repos, grep_repo, git_log
@@ -37,6 +39,34 @@ MINOR_FIX_KEYWORDS = [
 
 def is_minor_fix(task_title: str) -> bool:
     return any(kw in task_title.lower() for kw in MINOR_FIX_KEYWORDS)
+
+
+def get_relevant_pulse_threads(domain_keywords: list[str], limit: int = 3) -> str:
+    """Та же логика, что в individual_initiative.py — не даёт хорошим
+    мыслям из Company Pulse умирать в .state/company_threads.json
+    непрочитанными отрядом, в чью зону они как раз попадают."""
+    path = Path(".state/company_threads.json")
+    if not path.exists() or not domain_keywords:
+        return ""
+    try:
+        threads = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    matches = []
+    for t in threads:
+        text = " ".join(m.get("text", "") for m in t.get("messages", [])).lower()
+        if any(kw.lower() in text for kw in domain_keywords):
+            last_msgs = t["messages"][-3:]
+            snippet = "\n".join(f"  {m['who']}: {m['text'][:220]}" for m in last_msgs)
+            matches.append(f'• "{t["topic"]}":\n{snippet}')
+    if not matches:
+        return ""
+    matches = matches[-limit:]
+    return (
+        "\n\nНЕДАВНИЕ ОБСУЖДЕНИЯ КОЛЛЕГ В ОБЩЕМ ЧАТЕ (Company Pulse) В ВАШЕЙ ЗОНЕ "
+        "— ещё не доведены до задачи:\n" + "\n".join(matches)
+        + "\n\nМожешь взять любую из этих мыслей вместо/вместе со сканированием кода.\n"
+    )
 
 
 async def squad_proposal_agent(squad_key: str) -> dict | None:
@@ -70,7 +100,7 @@ async def squad_proposal_agent(squad_key: str) -> dict | None:
 
 Текущая доска задач (что уже в работе — НЕ дублируй это):
 {board_summary}
-
+{get_relevant_pulse_threads(squad["domain_keywords"])}
 Посмотри реальный код через git_log/grep_repo в репозиториях bld-system
 и bld-panel. Найди ОДНУ конкретную реальную проблему в твоей зоне
 ответственности — баг, технический долг, слабое место — которой ещё нет
