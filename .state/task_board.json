@@ -319,7 +319,17 @@
       "how": "",
       "created": "18.07.2026 15:49",
       "cto_comment": ""
+    },
+    {
+      "id": "хеврута: kth_robotics+weizmann_crypto+iit_delhi_lowresource+copenhagen_correlation-20260718200545",
+      "title": "Эй, ребята, у меня тут давно вертится одна \"а что если\" из мира perception в дикой природе стройки: а вдруг мы можем радикально поднять robustness наших anomaly-детекторов, если вместо попыток \"почистить\" грязное селфи с Android'а (дождь, грязный объектив, низкий свет) — научимся напрямую моделировать joint distribution \"evidence under degradation\" как Bayesian prior внутри level_4-6 пайплайна? Типа, не denoising как preprocessing, а degradation-aware likelihood, который сразу коррелирует с physical constraints BOQ. Что думаете, может это перевернуть, как мы сейчас боремся с false positives на уровне trust? Зацепило кого?",
+      "squad": "хеврута: kth_robotics+weizmann_crypto+iit_delhi_lowresource+copenhagen_correlation",
+      "status": "in_progress",
+      "reason": "**ПОКА НЕ В РЕАЛИЗАЦИЮ.**\n\nИдея живая, но обсуждение слишком рано перескочило от гипотезы к MobileNet, полям схемы и L8-логированию.\n\nГлавная ошибка: нельзя считать L8 violation меткой *misclassification*. Он также объясняется реальной подменой, ошибочным BOQ, неполной историей или неверным correlation rule. Обучаться или принимать решение на такой прокси-метке — значит закольцевать шум и получить красиво калиброванную ошибку.\n\nПравильный следующий шаг — **не код**, а короткий offline experiment spec:\n\n1. Есть ли вообще независимые размеченные исходы для фото/материалов и ложных deviation?\n2. Какова \\(P(\\text{ошибка извлечения} \\mid \\text{degradation score})\\) относительно baseline, с доверительными интервалами?\n3. Как изменение confidence-gate меняет одновременно FP **и** FN owner-visible deviations?\n\nЕсли независимой разметки нет — эксперимент останавливается. Synthetic data здесь не заменяет ответ: она может проверить устойчивость модели к искусственному blur, но не докажет связь с реальными ошибками Bedrock на Telegram-материалах.\n\nОтдельно: tenant-wide correlation — разумный **internal review signal**, но не доказательство substitution fraud и не основание для нового owner-visible типа deviation.\n\nЧто это даёт: мы либо получим измеримую причину для узкой calibration-задачи, либо сэкономим недели на изящном решении несуществующей проблемы.  \nГде провалиться: принять корреляционный violation за ground truth.  \nСледующий шаг: подготовить экспериментальный протокол и инвентаризацию доступных независимых меток; только после этого решать, заслуживает ли тема реализации.",
+      "how": "",
+      "created": "18.07.2026 20:05",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "18.07.2026 15:49"
+  "last_updated": "18.07.2026 20:05"
 }
