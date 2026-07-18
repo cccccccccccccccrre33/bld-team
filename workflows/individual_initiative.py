@@ -23,19 +23,25 @@ run_engineering_task (helper_pool по умолчанию = весь общий 
 """
 
 import asyncio
+import json
 import random
 import sys
+from pathlib import Path
 
 from agents.architecture_council import ARCHITECT_BUILDERS, ARCHITECT_LABELS
 from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
 from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS, GLOBAL_LABELS as EXPANSION_LABELS
+from agents.expansion_geniuses import SPECIALTY_KEYWORDS as EXPANSION_KEYWORDS
 from agents.global_elite import ELITE1_BUILDERS, ELITE1_LABELS
 from agents.global_elite import ELITE1_SPECIALTY_KEYWORDS
 from agents.global_elite_100 import ELITE2_BUILDERS, ELITE2_LABELS
 from agents.global_elite_100 import ELITE2_SPECIALTY_KEYWORDS
 from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
+from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
+from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
+from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo
 from tools.telegram_report import send_telegram_report
 from workflows._common import compile_brief, curate_knowledge, fair_sample, format_notebook, load_notebook, record_participation, save_notebook_entry
@@ -51,6 +57,56 @@ ALL_LABELS = {
     **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
     **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS,
 }
+
+# Ключевые слова специализации каждого — те же самые, по которым в
+# engineering_task.py находят помощников. Нужны здесь для ДРУГОЙ цели:
+# сматчить человека с ветками Company Pulse / Chevruta по его теме,
+# чтобы инициатива не изобреталась в вакууме, а могла подхватить то,
+# что коллеги уже обсудили в общем чате, но никто не довёл до задачи.
+ALL_MATCH_KEYWORDS = {
+    **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
+    **ARCHITECT_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
+}
+
+
+def get_relevant_pulse_threads(name: str, limit: int = 3) -> str:
+    """Подтягивает недавние ветки общего чата компании (Company Pulse),
+    пересекающиеся по теме со специализацией человека — раньше
+    scout_and_propose вообще не знал, что там обсуждалось, и хорошие
+    мысли коллег умирали в .state/company_threads.json, никем не
+    подхваченные. Не требует "готовности" темы (в отличие от
+    escalate_if_ready в company_pulse.py) — здесь достаточно
+    пересечения по ключевым словам, решение брать её в работу или нет
+    остаётся за самим человеком."""
+    keywords = ALL_MATCH_KEYWORDS.get(name, [])
+    if not keywords:
+        return ""
+    path = Path(".state/company_threads.json")
+    if not path.exists():
+        return ""
+    try:
+        threads = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+
+    matches = []
+    for t in threads:
+        text = " ".join(m.get("text", "") for m in t.get("messages", [])).lower()
+        if any(kw in text for kw in keywords):
+            last_msgs = t["messages"][-3:]
+            snippet = "\n".join(f"  {m['who']}: {m['text'][:220]}" for m in last_msgs)
+            matches.append(f'• "{t["topic"]}":\n{snippet}')
+
+    if not matches:
+        return ""
+    matches = matches[-limit:]
+    return (
+        "\n\nНЕДАВНИЕ ОБСУЖДЕНИЯ КОЛЛЕГ ПО ТВОЕЙ ТЕМЕ (общий чат компании, "
+        "Company Pulse — ещё НЕ доведены ни до чьей конкретной задачи):\n"
+        + "\n".join(matches)
+        + "\n\nМожешь взять любую из этих мыслей и довести до конкретной задачи "
+        "(это ничем не хуже находки в коде), или найти своё в реальном коде ниже.\n"
+    )
 
 # "Молодые" — те же 19 человек, что описаны как "молодые гении" в
 # agents/global_geniuses.py (недавние выпускники) и
@@ -131,6 +187,7 @@ async def scout_and_propose(name: str) -> dict | None:
 Доска активных задач компании (не дублируй то, что уже в работе):
 {board_summary}
 {notebook_block}
+{get_relevant_pulse_threads(name)}
 Загляни в реальный код (git_log, grep_repo по bld-system и bld-panel)
 и найди ОДНУ конкретную проблему именно в твоей специализации — не
 общую, а такую, в которой ты реально эксперт.
