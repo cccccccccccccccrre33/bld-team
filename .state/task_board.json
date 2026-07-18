@@ -289,7 +289,17 @@
       "how": "",
       "created": "18.07.2026 07:34",
       "cto_comment": ""
+    },
+    {
+      "id": "gtm-20260718100828",
+      "title": "Сделал `sales-script-v2.md` в `gtm-materials/`.",
+      "squad": "gtm",
+      "status": "needs_founder_decision",
+      "reason": "Автономная инициатива GTM-департамента.",
+      "how": "Документ сохранён в gtm-materials/.",
+      "created": "18.07.2026 10:08",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "18.07.2026 07:34"
+  "last_updated": "18.07.2026 10:08"
 }
