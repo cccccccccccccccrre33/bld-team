@@ -242,7 +242,15 @@ async def run_individual_initiative(name: str | None = None) -> None:
     # своим полным write-доступом), может привлечь помощь из общего
     # пула специалистов через ту же машинерию, что и отряды.
     writer = ALL_BUILDERS[name](can_write=True)
-    report = await run_engineering_task(title, lead_agent=writer, lead_label=label)
+    try:
+        report = await run_engineering_task(title, lead_agent=writer, lead_label=label)
+    except Exception as e:
+        print(f"[{name}] run_engineering_task упал с исключением: {e}")
+        update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+        error_report = f"❌ ИНДИВИДУАЛЬНАЯ ИНИЦИАТИВА УПАЛА С ОШИБКОЙ\n\n{label}\nЗадача: {title}\n\nОшибка: {e}"
+        print(error_report)
+        send_telegram_report(error_report)
+        return
     update_task_status(task_id, "done")
 
     full_report = f"🏁 ИНДИВИДУАЛЬНАЯ ИНИЦИАТИВА\n\n{label}\n{verdict_note}\n\n{report}"
