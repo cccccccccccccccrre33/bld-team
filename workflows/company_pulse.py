@@ -201,16 +201,29 @@ async def escalate_if_ready(thread: dict) -> str | None:
     if not approved:
         return verdict_msg
 
+    from workflows.task_board import can_take_more, update_task_status
+
+    if not can_take_more():
+        print(f"[company_pulse] Лимит одновременных задач (MAX_CONCURRENT) исчерпан — '{title}' ждёт своей очереди, не запускаем сейчас")
+        return f"{verdict_msg}\n\n⏳ Лимит параллельных задач исчерпан — реализация отложена до освобождения слота."
+
     task_id = add_task(title, f"pulse:{who}", status="in_progress", reason=comment)
     print(f"[company_pulse] Задача одобрена — запускаем реализацию: {title}")
 
     if not await sync_repos_or_alert():
+        update_task_status(task_id, "rejected", "sync_repos_or_alert не прошёл")
         return verdict_msg
 
     from workflows.engineering_task import run_engineering_task
-    from workflows.task_board import update_task_status
 
-    engineering_report = await run_engineering_task(title)
+    try:
+        engineering_report = await run_engineering_task(title)
+    except Exception as e:
+        print(f"[company_pulse] run_engineering_task упал с исключением: {e}")
+        update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+        send_telegram_report(f"❌ Реализация \"{title}\" (из ветки \"{thread['topic']}\") упала с ошибкой: {e}")
+        return f"{verdict_msg}\n\n❌ Реализация упала с ошибкой: {e}"
+
     update_task_status(task_id, "done")
 
     full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ВЕТКИ \"{thread['topic']}\"\n\n{engineering_report}"
