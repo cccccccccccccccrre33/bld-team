@@ -33,7 +33,7 @@
   "isi_kolkata_evt": "2026-07-15T12:52:16.823796",
   "fizmat": "2026-07-15T12:52:22.246344",
   "embedded_edge_engineer": "2026-07-15T13:05:21.872719",
-  "xjtu_onboarding": "2026-07-15T14:46:22.284942",
+  "xjtu_onboarding": "2026-07-19T20:04:52.663817",
   "ruc_dataeng": "2026-07-18T17:54:41.453012",
   "bsu_minsk_engagement": "2026-07-15T16:15:29.709932",
   "tianjin_concrete_chem": "2026-07-15T16:15:29.709932",
@@ -186,5 +186,6 @@
   "itmo_dupdetect": "2026-07-19T15:54:52.007914",
   "sorbonne_puremath": "2026-07-19T16:55:14.047817",
   "tomsk_predictivemaintenance": "2026-07-19T17:56:19.065789",
-  "chief_scientist": "2026-07-19T19:02:46.721478"
+  "chief_scientist": "2026-07-19T19:02:46.721478",
+  "hust_ratelimit": "2026-07-19T20:04:52.663817"
 }
