@@ -339,7 +339,17 @@
       "how": "",
       "created": "19.07.2026 08:08",
       "cto_comment": ""
+    },
+    {
+      "id": "gtm-20260719101849",
+      "title": "Готово: я подготовил `sales-script-v3.md` как более жёсткую версию скрипта продаж для BLD System.",
+      "squad": "gtm",
+      "status": "needs_founder_decision",
+      "reason": "Автономная инициатива GTM-департамента.",
+      "how": "Документ сохранён в gtm-materials/.",
+      "created": "19.07.2026 10:18",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "19.07.2026 08:08"
+  "last_updated": "19.07.2026 10:18"
 }
