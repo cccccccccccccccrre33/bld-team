@@ -404,11 +404,11 @@
       "id": "alpha-20260720095611",
       "title": "Убрать хардкод имени postgres-constraint `uq_balance_material` из upsert в `ai/processor.py` (заменить на `ON CONFLICT (…колонки…)`)",
       "squad": "alpha",
-      "status": "proposed",
+      "status": "rejected",
       "reason": "В `ai/processor.py` есть SQL с `ON CONFLICT ON CONSTRAINT uq_balance_material` (строки ~2916/2935). Это хрупко: при пересоздании/миграциях constraint может получить другое имя, и тогда upsert начнёт падать на Postgres с `constraint ... does not exist`, хотя уникальность по колонкам сохранится.",
       "how": "Найти определение уникального ключа для material balance (какие именно колонки должны быть conflict target) и переписать upsert на `ON CONFLICT (col1, col2, ...) DO UPDATE ...`. Добавить/обновить тест, который проверяет генерируемый SQL и устойчивость к переименованию constraint (без привязки к имени).",
       "created": "20.07.2026 09:56",
-      "cto_comment": ""
+      "cto_comment": "Проблема реальная: миграция `20260606_092` удаляет старые индексы и создаёт четыре **partial unique index**, а `ON CONFLICT ON CONSTRAINT uq_balance_material` не соответствует этой схеме. Но предложенная замена на простой `ON CONFLICT (колонки)` некорректна: для inference partial-index PostgreSQL требует точно совпадающий `WHERE`, а ключи различаются для `section_id` и `material_key`; нужен отдельный, проверенный план upsert по фактическим четырём инвариантам, а не косметическая замена имени. Дубля на доске и решения в вики нет — принесите уточнённую задачу с SQL для каждой ветви и интеграционным тестом на реальном PostgreSQL."
     }
   ],
   "last_updated": "20.07.2026 09:56"
