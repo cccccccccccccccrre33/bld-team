@@ -157,7 +157,21 @@ async def run_chevruta() -> str:
         from workflows.engineering_task import run_engineering_task
         from workflows.task_board import update_task_status
 
-        engineering_report = await run_engineering_task(topic)
+        # ВАЖНО: как и в company_pulse/individual_initiative/squad_task/
+        # lab_session/breakthrough_proposal/big_projects — оборачиваем в
+        # try/except. Без этого необработанное исключение внутри
+        # run_engineering_task() (таймаут модели, git-конфликт и т.п.)
+        # оставляет задачу в "in_progress" НАВСЕГДА, что упирается в
+        # MAX_CONCURRENT и молча блокирует реализацию во ВСЕХ остальных
+        # воркфлоу компании, не только в хевруте.
+        try:
+            engineering_report = await run_engineering_task(topic)
+        except Exception as e:
+            print(f"[chevruta] run_engineering_task упал с исключением: {e}")
+            update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+            send_telegram_report(f"❌ Реализация по итогам хевруты ({', '.join(group_names)}) упала с ошибкой: {e}")
+            return f"{report}\n\n❌ Реализация упала с ошибкой: {e}"
+
         update_task_status(task_id, "done")
 
         full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ХЕВРУТЫ ({mentor_label} одобрил)\n\n{engineering_report}"
