@@ -65,7 +65,7 @@
   "nju_plt": "2026-07-16T10:27:39.714305",
   "aalto_hci": "2026-07-19T14:38:24.269020",
   "zju_quant": "2026-07-18T11:58:55.217267",
-  "security_crypto_architect": "2026-07-16T12:02:09.552795",
+  "security_crypto_architect": "2026-07-20T16:21:14.888480",
   "msu_mekhmat_searchmath": "2026-07-16T12:16:05.200068",
   "princeton_ai_theory": "2026-07-18T11:59:01.237706",
   "imperial_robotics": "2026-07-16T12:16:05.200068",
@@ -131,7 +131,7 @@
   "security_engineer": "2026-07-17T16:09:34.473592",
   "mohyla_wareconomy": "2026-07-17T16:13:13.730031",
   "anu_algorithms": "2026-07-20T05:04:07.168219",
-  "mcgill_representation": "2026-07-17T16:58:52.861283",
+  "mcgill_representation": "2026-07-20T16:21:14.888480",
   "tsinghua_fewshot": "2026-07-18T11:47:17.060591",
   "auckland_buildingcode": "2026-07-17T16:58:55.089980",
   "ucas_quantization": "2026-07-17T16:58:55.089980",
@@ -197,5 +197,6 @@
   "xmu_mlops": "2026-07-20T11:21:56.187907",
   "ustc_speech": "2026-07-20T13:25:50.815360",
   "aub_reconstruction": "2026-07-20T15:28:17.031355",
-  "kse_reconstructioncost": "2026-07-20T15:28:27.650005"
+  "kse_reconstructioncost": "2026-07-20T15:28:27.650005",
+  "llm_systems_architect": "2026-07-20T16:21:14.888480"
 }
