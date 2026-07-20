@@ -434,12 +434,12 @@
       "id": "platform-20260720154759",
       "title": "Убрать хардкод `ON CONFLICT ON CONSTRAINT uq_balance_material` из `ai/processor.py` и перейти на `ON CONFLICT (…колонки…)` по актуальному identity key",
       "squad": "platform",
-      "status": "proposed",
+      "status": "rejected",
       "reason": "В `ai/processor.py` апсерт завязан на имя constraint `uq_balance_material`, но в миграциях/моделях уже фигурируют новые уникальные индексы (`uq_balance_material_identity_project/section`) и legacy-варианты. Это создаёт хрупкость деплоя: при разъезде схемы между окружениями/миграциями апсерт начнёт падать или конфликтовать не по тем ключам, ломая идемпотентность и CI/CD (прогоны/миграции).",
       "how": "Определить точные conflict-колонки для material balance identity (tenant_id + identity_key + scope-поля) и заменить SQL на `ON CONFLICT (col1, col2, ...) DO UPDATE`. Обновить тест `tests/test_processor.py` (сейчас проверяет строку с `uq_balance_material`) и добавить проверку на корректный набор колонок, чтобы зафиксировать контракт на уровне CI.",
       "created": "20.07.2026 15:47",
-      "cto_comment": ""
+      "cto_comment": "Задача дублирует уже отклонённую `[alpha]` на доске, а предложенная замена технически неполна: актуальные identity-индексы являются **partial unique indexes** и разделены по `section_id`/`material_key`; простой `ON CONFLICT (…колонки…)` без соответствующего `WHERE` не сможет вывести подходящий индекс в PostgreSQL. В миграции `20260606_092` действительно больше нет `uq_balance_material` как constraint, так что проблему нужно исправлять, но сначала принести единый вариант upsert для legacy и identity веток с точными predicate и тестами на оба scope."
     }
   ],
-  "last_updated": "20.07.2026 15:47"
+  "last_updated": "20.07.2026 15:48"
 }
