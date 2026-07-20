@@ -84,7 +84,7 @@
   "delft_civil_ai": "2026-07-19T21:23:16.491427",
   "reliability_engineer": "2026-07-20T16:53:19.751952",
   "knu_kyiv_numstability": "2026-07-16T19:58:14.645525",
-  "zju_mobile": "2026-07-20T13:25:47.136589",
+  "zju_mobile": "2026-07-20T20:16:56.752927",
   "shanghaitech_rendering": "2026-07-16T20:27:33.190331",
   "mit": "2026-07-19T16:25:59.252516",
   "ghent_ontology": "2026-07-18T15:53:42.419545",
@@ -198,5 +198,6 @@
   "ustc_speech": "2026-07-20T13:25:50.815360",
   "aub_reconstruction": "2026-07-20T15:28:17.031355",
   "kse_reconstructioncost": "2026-07-20T15:28:27.650005",
-  "llm_systems_architect": "2026-07-20T16:21:14.888480"
+  "llm_systems_architect": "2026-07-20T16:21:14.888480",
+  "sdu_localization": "2026-07-20T20:16:56.752927"
 }
