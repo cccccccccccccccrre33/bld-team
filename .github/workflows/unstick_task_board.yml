@@ -1,0 +1,34 @@
+name: Unstick Task Board
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Реально исправить и закоммитить (true) или только посмотреть (false)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  unstick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run unstick script
+        run: |
+          if [ "${{ inputs.apply }}" = "true" ]; then
+            python tools/unstick_task_board.py --apply
+          else
+            python tools/unstick_task_board.py
+          fi
