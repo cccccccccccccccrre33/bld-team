@@ -9,7 +9,7 @@
   "mekhmat": "2026-07-18T15:47:12.656390",
   "coo": "2026-07-14T23:51:52.458510",
   "qa_security": "2026-07-14T23:51:56.582787",
-  "eth": "2026-07-19T00:59:39.941872",
+  "eth": "2026-07-20T08:44:45.178304",
   "ceo": "2026-07-15T21:57:06.433656",
   "language_compiler_architect": "2026-07-19T14:38:21.979187",
   "realtime_systems_architect": "2026-07-15T02:03:51.839828",
@@ -17,7 +17,7 @@
   "ustc": "2026-07-17T16:39:49.956815",
   "algorithmic_performance_sorcerer": "2026-07-15T05:14:57.797038",
   "berkeley_mlinfra": "2026-07-19T08:42:24.243517",
-  "shenzhen_fintech": "2026-07-15T07:29:01.640785",
+  "shenzhen_fintech": "2026-07-20T08:44:45.178304",
   "mipt_networkphysics": "2026-07-15T07:53:50.245569",
   "usp_fintech_risk": "2026-07-15T07:53:50.245569",
   "data_integrity_architect": "2026-07-18T13:22:55.341408",
@@ -157,7 +157,7 @@
   "shenzhen_billing": "2026-07-18T07:30:11.715103",
   "scu_networking": "2026-07-18T06:05:15.189041",
   "telaviv_threatmodel": "2026-07-18T07:30:11.715103",
-  "swjtu_api": "2026-07-18T08:18:19.042906",
+  "swjtu_api": "2026-07-20T08:44:45.178304",
   "ural_b2bcompliance": "2026-07-18T08:18:32.827609",
   "lviv_polytechnic_dataresidency": "2026-07-18T11:00:07.361890",
   "ubc_testing": "2026-07-18T11:47:17.060591",
@@ -191,5 +191,6 @@
   "nudt_algo": "2026-07-19T20:23:32.894040",
   "chief_security_architect": "2026-07-19T22:25:26.894410",
   "sysu_riskeng": "2026-07-20T08:24:02.781192",
-  "shanghaitech_graphics": "2026-07-20T05:04:23.736900"
+  "shanghaitech_graphics": "2026-07-20T05:04:23.736900",
+  "sumy_telecomreliability": "2026-07-20T08:44:45.178304"
 }
