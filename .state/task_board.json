@@ -429,7 +429,17 @@
       "how": "",
       "created": "20.07.2026 13:09",
       "cto_comment": ""
+    },
+    {
+      "id": "platform-20260720154759",
+      "title": "Убрать хардкод `ON CONFLICT ON CONSTRAINT uq_balance_material` из `ai/processor.py` и перейти на `ON CONFLICT (…колонки…)` по актуальному identity key",
+      "squad": "platform",
+      "status": "proposed",
+      "reason": "В `ai/processor.py` апсерт завязан на имя constraint `uq_balance_material`, но в миграциях/моделях уже фигурируют новые уникальные индексы (`uq_balance_material_identity_project/section`) и legacy-варианты. Это создаёт хрупкость деплоя: при разъезде схемы между окружениями/миграциями апсерт начнёт падать или конфликтовать не по тем ключам, ломая идемпотентность и CI/CD (прогоны/миграции).",
+      "how": "Определить точные conflict-колонки для material balance identity (tenant_id + identity_key + scope-поля) и заменить SQL на `ON CONFLICT (col1, col2, ...) DO UPDATE`. Обновить тест `tests/test_processor.py` (сейчас проверяет строку с `uq_balance_material`) и добавить проверку на корректный набор колонок, чтобы зафиксировать контракт на уровне CI.",
+      "created": "20.07.2026 15:47",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "20.07.2026 13:09"
+  "last_updated": "20.07.2026 15:47"
 }
