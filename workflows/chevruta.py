@@ -28,9 +28,19 @@ from agents.roster import build_full_roster
 from agents.team import build_team
 from tools.telegram_report import send_telegram_report
 from workflows._common import compile_brief, curate_knowledge, fair_sample, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
+from workflows.research_backlog import add_entry, format_entry_for_prompt, get_revisit_candidate, mark_revisited
 from workflows.task_board import add_task
 
 MAX_TURNS = 10  # чуть больше, чем в Лаборатории — это не решение задачи, а разговор
+
+# Раньше, если кумир НЕ говорил "В РЕАЛИЗАЦИЮ", мысль просто уходила в
+# вики одной строкой и терялась навсегда — не было способа вернуться к
+# ней позже. Теперь такие мысли попадают в research backlog (см.
+# workflows/research_backlog.py), а сама хеврута с шансом REVISIT_CHANCE
+# отталкивается от залежавшейся темы вместо всегда полностью новой
+# (необязательно — участник вправе взять и свежую идею).
+REVISIT_CHANCE = 0.4
+REVISIT_MIN_DAYS = 5
 
 MENTOR_BUILDERS = {
     "cto": lambda: build_team()["cto"],
@@ -47,29 +57,42 @@ def pick_group(roster: dict, size_hint: int | None = None) -> list[str]:
     return fair_sample(list(roster.keys()), k=min(size, len(roster)))
 
 
-async def spark_hypothesis(group_names: list[str], roster: dict) -> tuple[str, str]:
+async def spark_hypothesis(group_names: list[str], roster: dict, inspiration: str | None = None) -> tuple[str, str]:
     """Один из группы (случайно) закидывает идею для совместного
     разбора — может быть про BLD, а может быть чисто техническое
     любопытство, не обязанное вести к немедленному изменению кода.
+
+    inspiration (опционально) — тема из research backlog, которую
+    можно (не обязательно) взять за отправную точку вместо совсем
+    новой идеи с нуля; см. REVISIT_CHANCE в run_chevruta().
 
     Пробует по очереди КАЖДОГО из группы (не только первого), если у
     кого-то модель временно недоступна — не роняем всю хеврату.
     Возвращает (opener_name, text) — важно знать, кто реально
     высказался, а не всегда предполагать group_names[0]."""
-    prompt_template = """
-Ты начинаешь хевруту (свободный совместный разбор идеи) с коллегами:
-{others}.
+    inspiration_block = ""
+    if inspiration:
+        inspiration_block = (
+            "\n\nЕсли хочешь, можешь оттолкнуться от этой темы — она уже "
+            f"всплывала раньше и не была доведена до конца:\n{inspiration}\n"
+            "(необязательно — если прямо сейчас есть идея поинтереснее, "
+            "начни с неё вместо этого)\n"
+        )
 
-Закинь ОДНУ мысль/гипотезу/идею для совместного обдумывания — не
-обязательно проблему из текущего кода, может быть техническое
-любопытство, "а что если", наблюдение, которое давно вертелось в
-голове. Тон — позитивный, живой, настоящий разговор коллег, а не
-формальная постановка задачи. 2-4 предложения.
-"""
     for opener_name in group_names:
         opener = roster[opener_name]
         others = ", ".join(n for n in group_names if n != opener_name)
-        text = await safe_agent_run(opener, prompt_template.format(others=others), person_label=opener_name)
+        prompt = (
+            f"Ты начинаешь хевруту (свободный совместный разбор идеи) с "
+            f"коллегами: {others}.\n\n"
+            "Закинь ОДНУ мысль/гипотезу/идею для совместного обдумывания — не "
+            "обязательно проблему из текущего кода, может быть техническое "
+            "любопытство, \"а что если\", наблюдение, которое давно вертелось "
+            "в голове. Тон — позитивный, живой, настоящий разговор коллег, а "
+            "не формальная постановка задачи. 2-4 предложения."
+            + inspiration_block
+        )
+        text = await safe_agent_run(opener, prompt, person_label=opener_name)
         if text is not None:
             return opener_name, text
     # Вся группа временно недоступна разом — статистически крайне
@@ -112,7 +135,11 @@ async def run_chevruta() -> str:
     record_participation(*group_names)
     print(f"Хеврута: {', '.join(group_names)}")
 
-    opener_name, topic = await spark_hypothesis(group_names, roster)
+    backlog_candidate = get_revisit_candidate(min_age_days=REVISIT_MIN_DAYS, origin="chevruta") \
+        if random.random() < REVISIT_CHANCE else None
+    inspiration = format_entry_for_prompt(backlog_candidate) if backlog_candidate else None
+
+    opener_name, topic = await spark_hypothesis(group_names, roster, inspiration=inspiration)
     if not topic:
         msg = f"⚠️ Хеврута не состоялась — вся группа ({', '.join(group_names)}) временно недоступна."
         print(msg)
@@ -178,7 +205,21 @@ async def run_chevruta() -> str:
         engineering_brief = await compile_brief(full, context_hint="реализация по итогам хевруты")
         send_telegram_report(engineering_brief)
         await curate_knowledge(f"Хеврута → реализовано: {', '.join(group_names)}", f"{report}\n\n{full}")
+        if backlog_candidate:
+            mark_revisited(backlog_candidate["id"], note="Доведено до реализации через хевруту.", close=True)
         return full
+
+    # Не "в реализацию" — просто интересная мысль. Раньше на этом всё
+    # заканчивалось: одна строка в вики, и мысль терялась навсегда.
+    # Теперь кладём (или обновляем, если сессия и так оттолкнулась от
+    # backlog-темы) в research backlog — чтобы вернуться к ней позже,
+    # а не полагаться на то, что кто-то случайно вспомнит.
+    if backlog_candidate:
+        mark_revisited(backlog_candidate["id"], note=f"Хеврута ({', '.join(group_names)}) снова обсудила тему — {mentor_label}: {reaction[:200]}")
+    else:
+        entry_id = add_entry(topic=topic[:200], summary=f"{mentor_label}: {reaction[:400]}",
+                              origin="chevruta", participants=group_names)
+        print(f"Сохранено в research backlog для возврата позже: {entry_id}")
     await curate_knowledge(f"Хеврута: {', '.join(group_names)}", report)
     return report
 
