@@ -9,7 +9,10 @@ Gate даёт чистый вердикт → merge_branch_to_main() мержи�
 
 Ведущий инженер (модель gpt-5.4 по умолчанию) сам решает, справится
 один или нужно привлечь ещё инженеров — без фиксированных сроков,
-по факту сложности того, что видно в реальном коде.
+по факту сложности того, что видно в реальном коде. Это решение
+передаётся структурированным статус-блоком (см. STATUS_BLOCK_MARKER/
+parse_help_signal ниже), а не угадывается по случайным словам в
+свободном тексте отчёта.
 """
 
 import asyncio
@@ -38,14 +41,71 @@ ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEY
 ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
 ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS, **EXPANSION_MODEL_ASSIGNMENTS}
 
-# Ключевые слова, по которым понимаем, что лид явно попросил помощи —
-# простая эвристика, не идеальная, но рабочая без сложного парсинга
-# структурированного вывода.
+# РАНЬШЕ: решение "звать ли помощь" принималось поиском подстрок вида
+# "нужна помощь" в свободном тексте лида — если лид описывал ситуацию
+# другими словами (что для 40+ разных моделей в ростере абсолютно
+# нормально), помощь просто не звалась, хотя объективно была нужна. И
+# наоборот — случайное упоминание "второй инженер" не по делу могло
+# вызвать помощь зря. Это была имитация решения, а не решение.
+#
+# ТЕПЕРЬ: лида явно просят вернуть машинно-читаемый статус-блок
+# (STATUS_BLOCK_MARKER ниже) — это его собственное структурированное
+# решение, а не наша догадка по фразам. HELP_KEYWORDS оставлены только
+# как ЯВНО помеченный запасной вариант на случай, если конкретная
+# модель проигнорирует формат (см. parse_help_signal) — используется
+# редко и всегда с пометкой в отчёте, чтобы это было видно, а не
+# маскировалось под нормальную работу.
 HELP_KEYWORDS = [
     "привлек", "привлёк", "нужна помощь", "разбил", "разбить",
     "второй инженер", "инженер 2", "junior", "ещё одного инженера",
     "потребуется ещё", "не справлюсь один", "нужен специалист",
 ]
+
+STATUS_BLOCK_MARKER = "===СТАТУС==="
+
+STATUS_BLOCK_INSTRUCTIONS = f"""
+В САМОМ КОНЦЕ ответа, отдельным блоком (не смешивай со свободным
+описанием работы выше), добавь СТРОГО в таком формате:
+
+{STATUS_BLOCK_MARKER}
+ПОМОЩЬ_НУЖНА: ДА или НЕТ
+ОБЛАСТИ: [если ДА — через запятую конкретные области оставшейся работы,
+например "безопасность, база данных"; если НЕТ — оставь пустым]
+{STATUS_BLOCK_MARKER}
+
+Это машинно-читаемый статус, а не часть твоего рассказа о работе —
+заполни его всегда, даже если помощь не нужна.
+"""
+
+
+def parse_help_signal(lead_summary: str) -> tuple[bool, list[str], str, bool]:
+    """Извлекает структурированное решение лида о том, нужна ли помощь
+    и в каких областях — вместо поиска случайных фраз по всему тексту.
+
+    Возвращает (нужна_ли_помощь, области, текст_без_статус_блока,
+    сработал_ли_запасной_вариант). Если лид проигнорировал формат
+    (структурный блок не найден) — используется старый HELP_KEYWORDS
+    как запасной вариант, а четвёртый элемент = True, чтобы вызывающий
+    код мог явно пометить это в отчёте (см. run_engineering_task)."""
+    match = re.search(
+        rf"{re.escape(STATUS_BLOCK_MARKER)}(.*?){re.escape(STATUS_BLOCK_MARKER)}",
+        lead_summary, re.IGNORECASE | re.DOTALL,
+    )
+    if match:
+        block = match.group(1)
+        clean_text = (lead_summary[:match.start()] + lead_summary[match.end():]).strip()
+        needs_help = bool(re.search(r"ПОМОЩЬ_НУЖНА\s*:\s*ДА", block, re.IGNORECASE))
+        areas: list[str] = []
+        areas_match = re.search(r"ОБЛАСТИ\s*:\s*(.+)", block, re.IGNORECASE)
+        if areas_match:
+            areas = [a.strip() for a in areas_match.group(1).split(",") if a.strip()]
+        return needs_help, areas, clean_text, False
+
+    # Запасной вариант: модель проигнорировала формат статус-блока.
+    # Не идеально, но лучше, чем полностью терять сигнал о помощи —
+    # вызывающий код обязан пометить это как fallback в отчёте.
+    legacy_needs_help = any(kw in lead_summary.lower() for kw in HELP_KEYWORDS)
+    return legacy_needs_help, [], lead_summary, True
 
 
 def slugify(text: str, max_len: int = 40) -> str:
@@ -137,7 +197,7 @@ async def run_engineering_task(
 Репозиторий для работы: {repo_name}. Ветка {branch_name} уже создана
 и является текущей — просто пиши файлы через write_file, изменения
 автоматически попадут в неё.
-"""
+{STATUS_BLOCK_INSTRUCTIONS}"""
     print(f"{lead_label} разбирается с задачей и пишет код...")
     lead_summary = await safe_agent_run(lead, prompt, person_label=f"{lead_label} ({lead_model})")
 
@@ -159,10 +219,23 @@ async def run_engineering_task(
             "Код не писался, ветка не тронута, review gate не запускался."
         )
 
-    findings = [f"👷‍♂️ {lead_label} ({lead_model}):\n{lead_summary}"]
+    needs_help, help_areas, clean_lead_summary, used_fallback = parse_help_signal(lead_summary)
 
-    if (force_consult or any(kw in lead_summary.lower() for kw in HELP_KEYWORDS)) and pool:
-        matched_names = [n for n in find_matching_specialists(lead_summary, max_specialists=2) if n in pool]
+    findings = [f"👷‍♂️ {lead_label} ({lead_model}):\n{clean_lead_summary}"]
+    if used_fallback:
+        findings.append(
+            "⚠️ Лид не вернул структурированный статус-блок — решение о помощи "
+            "принято резервной эвристикой по ключевым словам (менее надёжно, "
+            "стоит обратить внимание, если это повторяется у этой модели)."
+        )
+
+    if (force_consult or needs_help) and pool:
+        # Если лид явно назвал области (структурный сигнал) — матчим
+        # специалистов по НИМ, а не по всему свободному тексту: короче,
+        # точнее, меньше случайных ложных срабатываний на непричастные
+        # слова из середины рассказа о работе.
+        match_source = ", ".join(help_areas) if help_areas else clean_lead_summary
+        matched_names = [n for n in find_matching_specialists(match_source, max_specialists=2) if n in pool]
         if not matched_names:
             import random
             matched_names = [random.choice(list(pool.keys()))]
@@ -176,7 +249,7 @@ async def run_engineering_task(
             specialist_prompt = f"""
 {lead_label} оставил такое описание задачи и своей части работы:
 
-{lead_summary}
+{clean_lead_summary}
 
 Полная исходная задача: {task}
 Репозиторий: {repo_name}, ветка {branch_name} (уже текущая).
