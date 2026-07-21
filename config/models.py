@@ -27,21 +27,28 @@ gpt-5.5 БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ НИГДЕ — заменён
 удаляй эту строку при будущих правках — если где-то снова появится
 "gpt-5.5", это либо старый забытый дефолт, либо чья-то ручная опечатка.
 
+gpt-5.6-terra ТОЖЕ БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ НИГДЕ (по запросу Валика —
+не хуже, дешевле) — заменён на gpt-5.4 на всех ролях, где раньше был
+топовый уровень (CEO, CTO, Chief Scientist, Chief Architect,
+Лид-инженер, 9 ⭐-ролей Global Elite I). Не удаляй эту строку при
+будущих правках — если где-то снова появится "gpt-5.6-terra", это
+либо старый забытый дефолт, либо чья-то ручная опечатка.
+
 Отдельное ограничение по квотам: у каждого стороннего провайдера —
 всего 4 запроса квоты против 800 у gpt-моделей. Поэтому роли на них
 специально размазаны по всем провайдерам примерно поровну, а не
 сконцентрированы на одном-двух.
 
 Уровни нагрузки (от дорогого к дешёвому):
-- gpt-5.6-terra — самый дорогой и сильный (замена gpt-5.5). Только для
-                  ролей с правом реального финального решения (CEO,
-                  CTO, Chief Scientist, Chief Architect, Лид-инженер) и
-                  горстки ролей Global Elite I с наибольшим прямым
-                  попаданием в реальные задачи BLD (см. пометки ⭐ в
-                  agents/global_elite.py).
-- gpt-5.4       — сильная модель, дешевле terra, с высокой квотой (800).
-                  Для ролей с серьёзной нагрузкой, но не топовых, и там,
-                  где важна доказанная надёжность tool-calling (write_file).
+- gpt-5.4       — теперь самый сильный уровень в ростере (замена
+                  gpt-5.6-terra — не хуже, дешевле). Для ролей с правом
+                  реального финального решения (CEO, CTO, Chief
+                  Scientist, Chief Architect, Лид-инженер), горстки
+                  ролей Global Elite I с наибольшим прямым попаданием
+                  в реальные задачи BLD (см. пометки ⭐ в
+                  agents/global_elite.py), и ролей с серьёзной
+                  нагрузкой, где важна доказанная надёжность
+                  tool-calling (write_file).
 - gpt-5.4-mini  — средний уровень. Для ролей, где нужна вменяемость,
                   но не крайняя строгость.
 - gpt-5.4-nano  — самый дешёвый. Для чисто роутинговых/технических
@@ -84,7 +91,7 @@ def _env(key: str, default: str) -> str:
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": _env("MODEL_CTO", "gpt-5.6-terra"),
+    "cto": _env("MODEL_CTO", "gpt-5.4"),
 
     # Дотошный сильный синьор-бэкендер
     "backend_senior": _env("MODEL_BACKEND", "gpt-5.4"),
@@ -138,7 +145,7 @@ BOARD_MODEL_ASSIGNMENTS = {
     # Инженерная команда (agents/engineering.py) — РЕАЛЬНО пишет и
     # коммитит код (в отдельную ветку). Лид — топовая модель, ему
     # доверена вся техническая глубина; привлечённые инженеры дешевле.
-    "lead_engineer": _env("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.6-terra"),
+    "lead_engineer": _env("MODEL_BOARD_LEAD_ENGINEER", "gpt-5.4"),
     "junior_engineer": _env("MODEL_BOARD_JUNIOR_ENGINEER", "gpt-5.4-mini"),
 }
 
@@ -162,9 +169,10 @@ EXEC_MODEL_ASSIGNMENTS = {
 # Архетипы по мировым топ-вузам — используются И в общем ростере
 # (Лаборатория, HR 1-на-1), И как пул специалистов, которых лид-инженер
 # может "нанять" под конкретную задачу (agents/engineering.py).
-# gpt-5.6-terra сознательно не раздаём сюда — он остаётся только за
-# CEO, CTO, Chief Scientist, Chief Architect, Лид-инженером и горсткой
-# ⭐-ролей Global Elite I, чтобы не взорвать косты.
+# gpt-5.4-топ (бывший gpt-5.6-terra) сознательно не раздаём сюда — он
+# остаётся только за CEO, CTO, Chief Scientist, Chief Architect,
+# Лид-инженером и горсткой ⭐-ролей Global Elite I, чтобы не
+# концентрировать всю дискуссионную нагрузку на топовом уровне.
 GLOBAL_MODEL_ASSIGNMENTS = {
     "mit": _env("MODEL_GENIUS_MIT", "gpt-5.4"),          # быстрый прототип, широкий инженерный охват
     "caltech": _env("MODEL_GENIUS_CALTECH", "gpt-5.4"),  # предельная теоретическая строгость
@@ -180,17 +188,17 @@ GLOBAL_MODEL_ASSIGNMENTS = {
 # --- Лидерство (agents/leadership.py) ---
 # Chief Scientist — 5-й член совета директоров ("ту ли задачу решаем").
 # VP Engineering — 3-й член правления (приоритизация инженерных задач).
-CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.6-terra")
+CHIEF_SCIENTIST_MODEL = _env("MODEL_CHIEF_SCIENTIST", "gpt-5.4")
 VP_ENGINEERING_MODEL = _env("MODEL_VP_ENGINEERING", "gpt-5.4")
 
 # CEO — самый высокий авторитет в компании, флагманская модель.
-CEO_MODEL = _env("MODEL_CEO", "gpt-5.6-terra")
+CEO_MODEL = _env("MODEL_CEO", "gpt-5.4")
 
 # --- Review Gate (agents/review_gate.py) ---
 # Проверяют результат инженерной задачи ПЕРЕД тем как отчёт уйдёт
 # Валику — архитектурное вето, качество кода, попытка сломать решение.
 REVIEW_GATE_MODEL_ASSIGNMENTS = {
-    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.6-terra"),
+    "chief_architect": _env("MODEL_CHIEF_ARCHITECT", "gpt-5.4"),
     "reviewer": _env("MODEL_REVIEWER", "DeepSeek-V4-Pro"),  # силён в логике/сложности — Big O
     "failure_engineer": _env("MODEL_FAILURE_ENGINEER", "grok-4.3"),  # дерзкий стиль — специально всё ломает
     # Fuzzer сознательно НЕ на GPT/той же линейке, что пишет код — цель
@@ -297,7 +305,8 @@ FELLOWS_MODEL_ASSIGNMENTS = {
 
 # --- Global Elite I (agents/global_elite.py) — 50 сеньоров ---
 # 9 ролей с наибольшим прямым попаданием в реальные задачи BLD держим
-# на gpt-5.6-terra (см. docstring файла); остальные 41 размазаны по
+# на топовом gpt-5.4 (бывший gpt-5.6-terra, см. docstring файла);
+# остальные 41 размазаны по
 # gpt-5.4 и расширенному пулу из 12 сторонних моделей (запрошены отдельно —
 # DeepSeek-V4-Flash/Pro/V3.2/V3.2-Speciale, Llama-4-Maverick,
 # Mistral-Large-3, grok-4.3, grok-4-20-reasoning/non-reasoning,
@@ -315,7 +324,7 @@ GLOBAL_ELITE_1_MODEL_ASSIGNMENTS = {
     "seu_ai_safety": _env("MODEL_ELITE_SEU_AI_SAFETY", "Mistral-Large-3"),
     "xjtu_stats": _env("MODEL_ELITE_XJTU_STATS", "grok-4.3"),
     "scut_queue": _env("MODEL_ELITE_SCUT_QUEUE", "gpt-5.3-codex"),
-    "sysu_riskeng": _env("MODEL_ELITE_SYSU_RISKENG", "gpt-5.6-terra"),
+    "sysu_riskeng": _env("MODEL_ELITE_SYSU_RISKENG", "gpt-5.4"),
     "nju_plt": _env("MODEL_ELITE_NJU_PLT", "grok-4-20-reasoning"),
     "hku_llm_infra": _env("MODEL_ELITE_HKU_LLM_INFRA", "Kimi-K2.5"),
     "hkust_ml_theory": _env("MODEL_ELITE_HKUST_ML_THEORY", "DeepSeek-V3.2"),
@@ -325,40 +334,41 @@ GLOBAL_ELITE_1_MODEL_ASSIGNMENTS = {
     "nankai_puremath": _env("MODEL_ELITE_NANKAI_PUREMATH", "grok-4-20-reasoning"),
     "xmu_mlops": _env("MODEL_ELITE_XMU_MLOPS", "DeepSeek-V4-Flash"),
     "shanghaitech_graphics": _env("MODEL_ELITE_SHANGHAITECH_GRAPHICS", "grok-4.3"),
-    "zju_observability": _env("MODEL_ELITE_ZJU_OBSERVABILITY", "gpt-5.6-terra"),
+    "zju_observability": _env("MODEL_ELITE_ZJU_OBSERVABILITY", "gpt-5.4"),
     "scu_networking": _env("MODEL_ELITE_SCU_NETWORKING", "grok-4.3"),
-    "tsinghua_fewshot": _env("MODEL_ELITE_TSINGHUA_FEWSHOT", "gpt-5.6-terra"),
+    "tsinghua_fewshot": _env("MODEL_ELITE_TSINGHUA_FEWSHOT", "gpt-5.4"),
     "shenzhen_fintech": _env("MODEL_ELITE_SHENZHEN_FINTECH", "grok-4-20-non-reasoning"),
     "fudan_adversarial_ml": _env("MODEL_ELITE_FUDAN_ADVERSARIAL_ML", "Kimi-K2.7-Code"),
     "cas_ict_chips": _env("MODEL_ELITE_CAS_ICT_CHIPS", "Kimi-K2.7-Code"),
     "zju_quant": _env("MODEL_ELITE_ZJU_QUANT", "Kimi-K2.5"),
     "pku_yuanpei_llm": _env("MODEL_ELITE_PKU_YUANPEI_LLM", "DeepSeek-V3.2"),
-    "tsinghua_yao_algo2": _env("MODEL_ELITE_TSINGHUA_YAO_ALGO2", "gpt-5.6-terra"),
+    "tsinghua_yao_algo2": _env("MODEL_ELITE_TSINGHUA_YAO_ALGO2", "gpt-5.4"),
     "cambridge_physics": _env("MODEL_ELITE_CAMBRIDGE_PHYSICS", "DeepSeek-V3.2-Speciale"),
     "imperial_robotics": _env("MODEL_ELITE_IMPERIAL_ROBOTICS", "gpt-5.3-codex"),
     "harvard_stats": _env("MODEL_ELITE_HARVARD_STATS", "grok-4-20-reasoning"),
-    "princeton_ai_theory": _env("MODEL_ELITE_PRINCETON_AI_THEORY", "gpt-5.6-terra"),
+    "princeton_ai_theory": _env("MODEL_ELITE_PRINCETON_AI_THEORY", "gpt-5.4"),
     "sydney_sensor_fusion": _env("MODEL_ELITE_SYDNEY_SENSOR_FUSION", "gpt-5.4"),
     "epfl_distsys": _env("MODEL_ELITE_EPFL_DISTSYS", "DeepSeek-V4-Pro"),
     "snu_llm": _env("MODEL_ELITE_SNU_LLM", "DeepSeek-V4-Flash"),
     "weizmann_crypto": _env("MODEL_ELITE_WEIZMANN_CRYPTO", "Mistral-Large-3"),
-    "gatech_dr": _env("MODEL_ELITE_GATECH_DR", "gpt-5.6-terra"),
-    "delft_civil_ai": _env("MODEL_ELITE_DELFT_CIVIL_AI", "gpt-5.6-terra"),
-    "melbourne_ml": _env("MODEL_ELITE_MELBOURNE_ML", "gpt-5.6-terra"),
+    "gatech_dr": _env("MODEL_ELITE_GATECH_DR", "gpt-5.4"),
+    "delft_civil_ai": _env("MODEL_ELITE_DELFT_CIVIL_AI", "gpt-5.4"),
+    "melbourne_ml": _env("MODEL_ELITE_MELBOURNE_ML", "gpt-5.4"),
     "anu_algorithms": _env("MODEL_ELITE_ANU_ALGORITHMS", "grok-4-20-reasoning"),
     "edinburgh_neurosymbolic": _env("MODEL_ELITE_EDINBURGH_NEUROSYMBOLIC", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
     "kth_robotics": _env("MODEL_ELITE_KTH_ROBOTICS", "grok-4-20-non-reasoning"),
     "aalto_hci": _env("MODEL_ELITE_AALTO_HCI", "grok-4-20-non-reasoning"),
     "warsaw_icpc": _env("MODEL_ELITE_WARSAW_ICPC", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
-    "ubc_testing": _env("MODEL_ELITE_UBC_TESTING", "gpt-5.6-terra"),
+    "ubc_testing": _env("MODEL_ELITE_UBC_TESTING", "gpt-5.4"),
     "postech_ai": _env("MODEL_ELITE_POSTECH_AI", "Kimi-K2.5"),
     "iisc_signal": _env("MODEL_ELITE_IISC_SIGNAL", "DeepSeek-V3.2"),
     "sorbonne_puremath": _env("MODEL_ELITE_SORBONNE_PUREMATH", "DeepSeek-V3.2-Speciale"),
 }
 
 # --- Global Elite II (agents/global_elite_100.py) — 100 сеньоров ---
-# Ни одной роли на gpt-5.6-terra — сознательно, чтобы не растягивать
-# самый дорогой уровень на 100 новых позиций. Та же логика балансировки
+# Ни одной роли на топовом gpt-5.4-уровне сверх обычного (бывший
+# отдельный gpt-5.6-terra) — сознательно, чтобы не растягивать
+# самый нагруженный уровень на 100 новых позиций. Та же логика балансировки
 # по 13 моделям (gpt-5.4 + 12 сторонних), что и в Global Elite I.
 GLOBAL_ELITE_2_MODEL_ASSIGNMENTS = {
     "pku_recsys": _env("MODEL_ELITE_PKU_RECSYS", "gpt-5.3-codex"),
