@@ -17,7 +17,7 @@ from agents.squads import SQUADS
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo
-from workflows._common import load_task_board, record_participation, save_task_board_entry
+from workflows._common import record_participation, safe_agent_run
 from workflows.engineering_task import run_engineering_task
 
 RISK_KEYWORDS = [
@@ -130,45 +130,25 @@ async def run_squad_task(squad_key: str, task: str | None = None) -> str:
     return f"{squad['label']}\n\n{report}"
 
 
-async def run_squad_autonomous_cycle(squad_key: str) -> str:
-    """Полный автономный цикл отряда: сканирует зону (учитывая доску
-    задач), составляет предложение, при необходимости проходит
-    одобрение CTO, выполняет, обновляет доску задач."""
-    squad = SQUADS[squad_key]
-    label = squad["label"]
-
-    board = load_task_board()
-    recent_context = (
-        "\n".join(f"- [{e.get('status')}] {e.get('squad')}: {e.get('task')}" for e in board)
-        or "(доска пока пуста)"
-    )
-
-    task = await find_squad_problem(squad_key, recent_context=recent_context)
-    proposal = await draft_proposal(squad_key, task)
-
-    if needs_approval(proposal):
-        print(f"[{squad_key}] Задача рискованная — запрашиваем одобрение CTO...")
-        approved, verdict = await seek_approval(proposal, label)
-        approval_block = f"🧑‍💼 CTO:\n{verdict}\n\n"
-
-        if not approved:
-            save_task_board_entry({"squad": squad_key, "task": task, "status": "rejected"})
-            return (
-                f"{label}\n\n📋 ПРЕДЛОЖЕНИЕ (требовало одобрения):\n{task}\n\n{proposal}\n\n"
-                f"{approval_block}❌ CTO отклонил — работа не начата."
-            )
-        header = f"{label}\n\n📋 ПРЕДЛОЖЕНИЕ (одобрено CTO):\n{task}\n\n{proposal}\n\n{approval_block}✅ Приступаем.\n\n"
-    else:
-        header = (
-            f"{label}\n\n📋 РЕШЕНИЕ ОТРЯДА (низкий риск — не требует одобрения):\n"
-            f"{task}\n\n{proposal}\n\n"
-        )
-
-    save_task_board_entry({"squad": squad_key, "task": task, "status": "in_progress"})
-    engineering_report = await run_squad_task(squad_key, task)
-    save_task_board_entry({"squad": squad_key, "task": task, "status": "done"})
-
-    return header + engineering_report
+# Раньше здесь был run_squad_autonomous_cycle() — полный автономный
+# цикл отряда, дублирующий workflows/squad_initiative.py:
+# run_squad_initiative(). Он нигде не вызывался (мёртвый код), а его
+# load_task_board/save_task_board_entry были импортированы из
+# workflows._common — модуля, где эти функции пишут ПРОСТОЙ СПИСОК в
+# .state/task_board.json, тогда как реальная доска задач
+# (workflows/task_board.py, которую читают company_pulse,
+# individual_initiative, squad_initiative, big_projects,
+# breakthrough_proposal, gtm_initiative, chevruta) хранит там СЛОВАРЬ
+# {"tasks": [...], "last_updated": ...}. Если бы кто-то — включая саму
+# инженерную команду при рефакторинге — когда-нибудь вызвал эту
+# функцию, один запуск тихо переписал бы task_board.json в
+# несовместимый формат и уронил бы ВСЕ остальные воркфлоу компании с
+# `TypeError: list indices must be integers, not str` при следующем
+# чтении доски. Удалено целиком, а не просто исправлен импорт — раз
+# squad_initiative.py уже делает то же самое, но правильно (с dedup,
+# различением мелких/крупных задач и консистентным трекингом доски),
+# держать вторую, более слабую и потенциально опасную реализацию рядом
+# не было смысла.
 
 
 async def dispatch_squads(tasks_by_squad: dict[str, str | None]) -> list[str]:
@@ -229,8 +209,11 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
 чужую часть, дополняй её. В конце — короткое резюме, что сделал.
 """
         print(f"[relay] {squad['label']} берётся за свою часть...")
-        response = await lead.run(prompt)
-        findings.append(f"{squad['label']}:\n{response.text.strip()}")
+        part_text = await safe_agent_run(lead, prompt, person_label=f"{squad['label']} (relay)")
+        if part_text is None:
+            findings.append(f"{squad['label']}: не ответил после нескольких попыток — эта часть работы не выполнена.")
+            continue
+        findings.append(f"{squad['label']}:\n{part_text}")
 
     engineering_summary = "\n\n".join(findings)
     record_participation(*(leads_by_squad[k].name for k in order))
