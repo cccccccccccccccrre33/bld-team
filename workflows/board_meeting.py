@@ -34,7 +34,14 @@ from workflows._common import (
     save_topic,
     sync_repos_or_alert,
 )
-from workflows.squad_task import dispatch_squads, run_squad_relay, task_spans_both_domains
+from workflows.squad_initiative import run_squad_initiative
+from workflows.squad_task import dispatch_squads, run_squad_relay, run_squad_task, task_spans_both_domains
+from workflows.task_board import (
+    MAX_CONCURRENT,
+    add_task as board_add_task,
+    get_active_tasks,
+    update_task_status as board_update_task_status,
+)
 from agents.squads import SQUADS
 
 
@@ -288,37 +295,96 @@ async def main():
 
     if task_spans_both_domains(task):
         print("Задача затрагивает обе зоны — отряды работают эстафетой на одной ветке...")
-        relay_report = await run_squad_relay(task)
+        # РАНЬШЕ эта задача вообще не попадала на общую доску задач —
+        # workflows/task_board.py её не видел, а значит MAX_CONCURRENT и
+        # проверка дублей по всей компании были неполными (учитывали
+        # только Squad/Individual Initiative, но не совет директоров).
+        relay_task_id = board_add_task(
+            task, "relay:alpha+bravo", status="in_progress",
+            reason="Совместная задача обеих зон — извлечена как 'следующий шаг' заседания совета директоров.",
+        )
+        try:
+            relay_report = await run_squad_relay(task)
+            board_update_task_status(relay_task_id, "done")
+        except Exception as e:
+            board_update_task_status(relay_task_id, "rejected", f"Упало с необработанным исключением: {e}")
+            relay_report = (
+                f"❌ ЭСТАФЕТА ОТРЯДОВ ПО ИТОГАМ СОВЕТА ДИРЕКТОРОВ УПАЛА С ОШИБКОЙ\n\n"
+                f"Задача: {task}\n\nОшибка: {e}"
+            )
         print(f"\n{relay_report}")
         send_telegram_report(relay_report)
         await curate_knowledge("Совет директоров / Эстафета отрядов", report + "\n\n" + relay_report)
+        return
+
+    target_squad = assign_task_to_squad(task)
+    all_squad_keys = list(SQUADS.keys())
+    idle_squads = [k for k in all_squad_keys if k != target_squad]
+
+    # Задача совета директоров — стратегический приоритет: всегда
+    # регистрируется и выполняется, независимо от загрузки (в отличие
+    # от простаивающих отрядов ниже, которые сами ищут себе работу
+    # оппортунистически и потому честно ждут своей очереди при нехватке
+    # места). Регистрируем СРАЗУ — это резервирует один слот ёмкости
+    # ДО того, как считаем, сколько свободно для простаивающих отрядов.
+    task_id = board_add_task(
+        task, target_squad, status="in_progress",
+        reason="Извлечено как 'следующий шаг' из заседания совета директоров.",
+    )
+    print(f"Задача уходит в {SQUADS[target_squad]['label']} (зарегистрирована на доске: {task_id})...")
+
+    # РАНЬШЕ: максимум ОДИН дополнительный отряд, и только через раз —
+    # то есть при 4 отрядах трое почти никогда не работали параллельно
+    # с целевым, хотя реальный потолок параллелизма (MAX_CONCURRENT в
+    # workflows/task_board.py) почти всегда позволял больше. Это и
+    # создавало ощущение "имитации бурной деятельности" вместо живой
+    # параллельной экосистемы.
+    #
+    # ТЕПЕРЬ: считаем реально свободную ёмкость (по всей компании, не
+    # только по этому заседанию) и даём шанс ВСЕМ простаивающим отрядам
+    # по очереди, по честной ротации приоритета (чтобы не всегда
+    # доставалось одному и тому же порядку, если слотов на всех не
+    # хватает) — вместо жёсткого потолка "1 через раз".
+    turn = load_rotation_turn("squad_idle_rotation")
+    offset = (turn % len(idle_squads)) if idle_squads else 0
+    rotated_idle = idle_squads[offset:] + idle_squads[:offset]
+    save_rotation_turn("squad_idle_rotation", turn + 1)
+
+    free_slots = max(0, MAX_CONCURRENT - len(get_active_tasks()))
+    activated_idle = rotated_idle[:free_slots]
+
+    async def _run_target() -> str:
+        try:
+            rep = await run_squad_task(target_squad, task)
+            board_update_task_status(task_id, "done")
+            return rep
+        except Exception as e:
+            board_update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+            return (
+                f"❌ ИНЖЕНЕРНАЯ ЗАДАЧА ОТ СОВЕТА ДИРЕКТОРОВ УПАЛА С ОШИБКОЙ\n\n"
+                f"Отряд: {SQUADS[target_squad]['label']}\nЗадача: {task}\n\nОшибка: {e}"
+            )
+
+    coros = [_run_target()]
+    if activated_idle:
+        print(f"Свободно слотов: {free_slots} (из {MAX_CONCURRENT}). По ротации сами ищут "
+              f"себе задачу параллельно: {', '.join(SQUADS[k]['label'] for k in activated_idle)}...")
+        # run_squad_initiative уже полностью самодостаточен: сканирует
+        # свою зону, проверяет дубли на доске, различает мелкие правки
+        # от рискованных (тогда идёт через CTO), сам обновляет доску,
+        # шлёт свой отчёт в Telegram и пишет в вики — здесь не нужно
+        # повторять эту логику, только дождаться завершения.
+        coros.extend(run_squad_initiative(k) for k in activated_idle)
     else:
-        target_squad = assign_task_to_squad(task)
-        other_squads = [k for k in SQUADS if k != target_squad]
+        print(f"Свободных слотов для простаивающих отрядов сейчас нет (заняты {len(get_active_tasks())} "
+              f"из {MAX_CONCURRENT}) — они отдыхают этот цикл, а не потому что их искусственно придержали.")
 
-        # Ротация: чтобы простаивающие отряды не искали себе левую
-        # задачу каждый раз (риск постоянного шума от несвязанных
-        # параллельных веток) — только через раз, и по кругу, а не
-        # всегда один и тот же (иначе при 4 отрядах 3 из них почти
-        # никогда бы не получали шанс работать самостоятельно).
-        turn = load_rotation_turn("squad_idle_rotation")
-        if turn % 2 == 0:
-            idle_pick = other_squads[(turn // 2) % len(other_squads)]
-            print(f"Задача уходит в {SQUADS[target_squad]['label']}; "
-                  f"по ротации {SQUADS[idle_pick]['label']} тоже ищет себе задачу...")
-            tasks_by_squad = {target_squad: task, idle_pick: None}
-        else:
-            print(f"Задача уходит только в {SQUADS[target_squad]['label']}; "
-                  f"остальные отряды отдыхают этот цикл (ротация)...")
-            tasks_by_squad = {target_squad: task}
-        save_rotation_turn("squad_idle_rotation", turn + 1)
+    results = await asyncio.gather(*coros)
+    main_report = results[0]  # run_squad_initiative ничего не возвращает — отчитывается сама
 
-        squad_reports = await dispatch_squads(tasks_by_squad)
-
-        for squad_report in squad_reports:
-            print(f"\n{squad_report}")
-            send_telegram_report(squad_report)
-            await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + squad_report)
+    print(f"\n{main_report}")
+    send_telegram_report(main_report)
+    await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + main_report)
 
 
 if __name__ == "__main__":
