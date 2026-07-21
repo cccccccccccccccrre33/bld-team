@@ -32,8 +32,21 @@ from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
 from tools.telegram_report import send_telegram_report
 from workflows._common import ask, compile_brief, curate_knowledge, extract_next_step, fair_sample, looks_like_meta_complaint, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
+from workflows.research_backlog import add_entry, format_entry_for_prompt, get_revisit_candidate, mark_revisited
 
 MAX_TURNS = 10  # раунды разговора в паре/тройке — короче группового заседания
+
+# Раньше идея, которая не привела прямо сейчас к коду (либо группа без
+# доступа к коду обсуждала абстрактную проблему, либо CTO/секретарь не
+# сочли задачу готовой), просто терялась — уходила в Telegram и одной
+# строкой в вики, без малейшего способа "вернуться к этому через
+# неделю". Теперь такие случаи сохраняются в research backlog (см.
+# workflows/research_backlog.py), а НОВЫЕ сессии Лаборатории с шансом
+# REVISIT_CHANCE (если есть подходящая "залежавшаяся" тема старше
+# REVISIT_MIN_DAYS дней) сами возвращаются к ней, вместо того чтобы
+# всегда придумывать проблему с нуля.
+REVISIT_CHANCE = 0.5
+REVISIT_MIN_DAYS = 5
 
 ROLE_LABELS = {
     "mekhmat": "🔢 Мехмат", "fiztech": "⚙️  Физтех",
@@ -168,7 +181,21 @@ async def main():
         if not await sync_repos_or_alert():
             return
 
-    problem = await find_problem(group_names)
+    backlog_candidate = None
+    if random.random() < REVISIT_CHANCE:
+        backlog_candidate = get_revisit_candidate(min_age_days=REVISIT_MIN_DAYS, origin="lab_session")
+
+    if backlog_candidate:
+        print(f"Возвращаемся к теме из research backlog: {backlog_candidate['topic']}")
+        problem = (
+            f"{format_entry_for_prompt(backlog_candidate)}\n\n"
+            "Это тема, к которой компания решила вернуться спустя время, а не "
+            "новая находка прямо сейчас — покопайтесь глубже, посмотрите, "
+            "изменилось ли что-то с прошлого раза, и постарайтесь довести "
+            "мысль дальше, чем получилось в прошлый заход."
+        )
+    else:
+        problem = await find_problem(group_names)
     print(f"\nПроблема:\n{problem}\n{'=' * 60}")
 
     participants = [roster[n] for n in group_names]
@@ -193,7 +220,19 @@ async def main():
     # рекомендация конкретна — это уходит на решение CTO (без участия
     # основателя), и при одобрении реализуется реальной инженерной
     # командой, как и любая другая задача в компании.
+    def _stash_or_touch_backlog(reason_note: str) -> None:
+        """Если сессия началась с возврата к backlog-теме — просто
+        обновляет её (не создаёт дубль). Если началась с чистого
+        листа — кладёт НОВУЮ запись, чтобы мысль не потерялась."""
+        if backlog_candidate:
+            mark_revisited(backlog_candidate["id"], note=reason_note)
+        else:
+            entry_id = add_entry(topic=problem[:200], summary=f"{report[:500]}\n{reason_note}",
+                                  origin="lab_session", participants=group_names)
+            print(f"Сохранено в research backlog для возврата позже: {entry_id}")
+
     if not has_code_access:
+        _stash_or_touch_backlog("Абстрактная тема без доступа к коду — не эскалируется автоматически.")
         return
 
     secretary_client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
@@ -202,6 +241,7 @@ async def main():
 
     if looks_like_meta_complaint(task):
         print("Похоже на неосмысленную задачу (жалоба модели на нехватку данных) — не эскалируем.")
+        _stash_or_touch_backlog("Извлечённый 'следующий шаг' выглядел неосмысленным — не эскалирована, тема остаётся открытой.")
         return
 
     approved, comment = await cto_approval(
@@ -213,6 +253,7 @@ async def main():
     verdict_msg = f"🧭 CTO по итогам Лаборатории: {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
     send_telegram_report(verdict_msg)
     if not approved:
+        _stash_or_touch_backlog(f"CTO пока не одобрил ({comment[:200]}) — тема остаётся открытой для следующего захода.")
         return
 
     print("CTO одобрил — запускаем реализацию...")
@@ -225,11 +266,14 @@ async def main():
         error_report = f"❌ РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ УПАЛА С ОШИБКОЙ\n\nЗадача: {task}\n\nОшибка: {e}"
         print(error_report)
         send_telegram_report(error_report)
+        _stash_or_touch_backlog(f"Одобрено CTO, но реализация упала с ошибкой ({e}) — стоит вернуться.")
         return
     full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ\n\n{engineering_report}"
     engineering_brief = await compile_brief(full, context_hint="реализация по итогам Лаборатории")
     send_telegram_report(engineering_brief)
     await curate_knowledge(f"Лаборатория → реализовано: {', '.join(group_names)}", f"{verdict_msg}\n\n{full}")
+    if backlog_candidate:
+        mark_revisited(backlog_candidate["id"], note="Доведено до реализации через Лабораторию.", close=True)
 
 
 if __name__ == "__main__":
