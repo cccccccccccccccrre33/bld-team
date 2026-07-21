@@ -30,6 +30,7 @@ from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.telegram_report import send_telegram_report
 from workflows._common import ask, compile_brief, curate_knowledge, fair_sample, record_participation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
+from workflows.research_backlog import FOUNDATIONAL_AREAS, add_entry, classify_area
 from workflows.task_board import add_task, is_duplicate
 
 STATE_DIR = Path(".state")
@@ -52,11 +53,41 @@ def load_threads() -> list[dict]:
 
 def save_threads(threads: list[dict]) -> None:
     STATE_DIR.mkdir(exist_ok=True)
-    # Архивируем самые старые сверх лимита — не теряем их: то, что
-    # реально решилось, уже ушло в вики через curate_knowledge при
-    # эскалации; то, что просто затихло, отваливается молча, как в
-    # реальном чате старые ветки уходят вниз и забываются.
-    threads = sorted(threads, key=lambda t: t["last_active"], reverse=True)[:MAX_ACTIVE_THREADS]
+    # Архивируем самые старые сверх лимита. То, что реально решилось,
+    # уже ушло в вики через curate_knowledge при эскалации. РАНЬШЕ то,
+    # что просто затихло, отваливалось молча и терялось навсегда — как
+    # в реальном чате старые ветки уходят вниз и забываются. Но не
+    # каждая забытая ветка — просто шум: если содержание похоже на
+    # фундаментальное направление (математика/физика/алгоритмы/
+    # архитектура — см. FOUNDATIONAL_AREAS), и в ней было реальное
+    # обсуждение (2+ реплики, не одна случайная фраза), сохраняем
+    # снимок в research backlog ПЕРЕД тем, как обрезать — чтобы
+    # компания могла вернуться к ней позже (см. lab_session.py/
+    # chevruta.py, которые читают этот backlog).
+    ranked = sorted(threads, key=lambda t: t["last_active"], reverse=True)
+    kept, overflow = ranked[:MAX_ACTIVE_THREADS], ranked[MAX_ACTIVE_THREADS:]
+
+    for t in overflow:
+        messages = t.get("messages", [])
+        if len(messages) < 2:
+            continue
+        full_text = " ".join(m.get("text", "") for m in messages)
+        area = classify_area(t.get("topic", ""), full_text)
+        if area not in FOUNDATIONAL_AREAS:
+            continue
+        participants = sorted({m["who"] for m in messages})
+        add_entry(
+            topic=t.get("topic", "")[:200],
+            summary=full_text[-600:],
+            origin="company_pulse",
+            participants=participants,
+            area=area,
+        )
+        print(f"[company_pulse] Ветка '{t.get('topic', '?')}' архивируется по лимиту "
+              f"MAX_ACTIVE_THREADS, но выглядит фундаментальной ({area}) — "
+              "сохранена в research backlog вместо полной потери.")
+
+    threads = kept
     THREADS_PATH.write_text(json.dumps(threads, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
         subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
