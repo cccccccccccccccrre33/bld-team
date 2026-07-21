@@ -119,6 +119,17 @@ def can_take_more() -> bool:
     return len(get_active_tasks()) < MAX_CONCURRENT
 
 
+def available_capacity() -> int:
+    """Сколько ещё задач можно взять в работу ПРЯМО СЕЙЧАС, не превышая
+    MAX_CONCURRENT — в отличие от can_take_more() (просто да/нет),
+    отдаёт конкретное число. Нужно там, где нужно решить не "можно ли
+    взять ещё одну", а "скольким отрядам/людям одновременно можно дать
+    задачу в этом цикле" (см. workflows/board_meeting.py — раньше
+    рассинхрон между этим модулем и board_meeting.py приводил к тому,
+    что задачи от совета директоров вообще не учитывались в лимите)."""
+    return max(0, MAX_CONCURRENT - len(get_active_tasks()))
+
+
 def get_board_summary() -> str:
     """Короткий текстовый срез для показа отрядам перед поиском задачи."""
     board = _load()
