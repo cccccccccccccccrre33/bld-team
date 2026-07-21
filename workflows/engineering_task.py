@@ -104,6 +104,7 @@ async def run_engineering_task(
     lead_model: str | None = None,
     helper_pool: dict | None = None,
     branch_prefix: str = "ai-eng",
+    force_consult: bool = False,
 ) -> str:
     """Полный цикл: ветка -> лид пишет код -> (опционально) привлекает
     помощь -> коммит/пуш -> Review Gate -> (опционально) переделка по
@@ -114,6 +115,10 @@ async def run_engineering_task(
     lead_agent/helper_pool позволяют переиспользовать эту же логику
     для постоянных отрядов (workflows/squad_task.py) — свой лид, свой
     ограниченный пул участников отряда.
+
+    force_consult: если True — привлечь пул отряда независимо от того,
+    упомянул ли лид ключевые слова HELP_KEYWORDS (используется squad_task.py,
+    чтобы отряд всегда работал как команда, а не только лид в одиночку).
     """
     repo_name = repo_name or guess_repo(task)
     branch_name = AI_BRANCH_NAME
@@ -156,7 +161,7 @@ async def run_engineering_task(
 
     findings = [f"👷‍♂️ {lead_label} ({lead_model}):\n{lead_summary}"]
 
-    if any(kw in lead_summary.lower() for kw in HELP_KEYWORDS) and pool:
+    if (force_consult or any(kw in lead_summary.lower() for kw in HELP_KEYWORDS)) and pool:
         matched_names = [n for n in find_matching_specialists(lead_summary, max_specialists=2) if n in pool]
         if not matched_names:
             import random
