@@ -12,7 +12,19 @@
 - self_approved: отряд взял сам (мелкая задача, не требует approval)
 - in_progress: выполняется прямо сейчас
 - done       : ветка запушена, Review Gate пройден
-- rejected   : CTO отклонил с комментарием
+- rejected   : CTO отклонил с комментарием (осмысленное решение)
+- timed_out  : процесс, выполнявший задачу, оборвался (обычно — job
+               GitHub Actions убит по timeout-minutes), так и не
+               обновив статус — НЕ то же самое, что rejected: тут
+               никто ничего не отклонял, просто исполнение прервалось
+               снаружи. См. reconcile_stale_tasks() ниже — статус
+               выставляется автоматически, не CTO.
+
+Каждая запись хранит "created" (когда заведена) и "updated" (когда в
+последний раз менялся статус) — "updated" и есть то, по чему считается
+"зависла ли задача", а не "created" (иначе задача, которая честно
+неделю жила в "proposed" перед одобрением, засчиталась бы зависшей
+сразу после перехода в in_progress).
 """
 
 import json
@@ -26,6 +38,16 @@ BOARD_PATH = STATE_DIR / "task_board.json"
 # Максимум активных задач на всю компанию одновременно (in_progress).
 # Защита от "все взяли всё одновременно и начался хаос".
 MAX_CONCURRENT = 4
+
+# Сколько часов задача может честно висеть в in_progress/proposed,
+# прежде чем считать её зависшей. Реальные timeout-minutes джобов в
+# .github/workflows/*.yml — 10-45 минут (board_meeting: 20,
+# squad_initiative: 25, individual_initiative: 20, chevruta: 15,
+# lab_session: 15) — то есть если GitHub Actions убивает процесс по
+# timeout, задача виснет уже в первый час. 2 часа — с большим запасом
+# выше любого реального timeout-minutes, но всё ещё далеко от "дней",
+# чтобы зомби не занимали слот MAX_CONCURRENT надолго.
+STALE_HOURS = 2
 
 
 def _load() -> dict:
@@ -66,6 +88,7 @@ def add_task(title: str, squad: str, status: str = "proposed",
     """Добавляет задачу на доску. Возвращает её task_id."""
     board = _load()
     task_id = f"{squad}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
     board["tasks"].append({
         "id": task_id,
         "title": title,
@@ -73,7 +96,8 @@ def add_task(title: str, squad: str, status: str = "proposed",
         "status": status,
         "reason": reason,
         "how": how,
-        "created": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "created": now,
+        "updated": now,
         "cto_comment": "",
     })
     _save(board)
@@ -85,14 +109,144 @@ def update_task_status(task_id: str, status: str, cto_comment: str = "") -> None
     for task in board["tasks"]:
         if task["id"] == task_id:
             task["status"] = status
+            task["updated"] = datetime.now().strftime("%d.%m.%Y %H:%M")
             if cto_comment:
                 task["cto_comment"] = cto_comment
             break
     _save(board)
 
 
+def _parse_ts(task: dict) -> datetime | None:
+    """'updated' — авторитетный момент последнего изменения статуса.
+    Для старых записей (созданных до появления этого поля) откатываемся
+    на 'created' — лучше приблизительно, чем не проверять вообще."""
+    raw = task.get("updated") or task.get("created")
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%d.%m.%Y %H:%M")
+    except Exception:
+        return None
+
+
+def find_stale_tasks(stale_hours: int = STALE_HOURS) -> list[dict]:
+    """Только СМОТРИТ — какие задачи в in_progress/proposed висят дольше
+    stale_hours часов, ничего не меняет. Отдельно от reconcile_stale_tasks(),
+    чтобы можно было посмотреть перед тем как реально исправлять (см.
+    tools/unstick_task_board.py — сухой прогон использует эту функцию)."""
+    board = _load()
+    now = datetime.now()
+    stale = []
+    for t in board["tasks"]:
+        if t["status"] not in ("in_progress", "proposed"):
+            continue
+        when = _parse_ts(t)
+        if when is None:
+            continue
+        age_hours = (now - when).total_seconds() / 3600
+        if age_hours >= stale_hours:
+            entry = dict(t)
+            entry["_age_hours"] = age_hours
+            stale.append(entry)
+    return stale
+
+
+def reconcile_stale_tasks(stale_hours: int = STALE_HOURS, notify: bool = True) -> list[dict]:
+    """Реально помечает зависшие задачи статусом 'timed_out' (см.
+    докстринг модуля — это НЕ 'rejected': тут никто ничего не отклонял
+    по существу, процесс просто оборвался снаружи, обычно потому что
+    GitHub Actions job убивает выполнение по timeout-minutes сигналом,
+    который try/except внутри Python в принципе не может поймать).
+
+    Коммитит изменение, только если реально что-то нашлось — не гоняет
+    git попусту. По умолчанию шлёт короткое уведомление в Telegram
+    (одним сообщением на все найденные сразу), чтобы Валик узнавал об
+    этом сам, а не только читая task_board.json руками.
+
+    Раньше единственным способом почистить это было вручную запустить
+    tools/unstick_task_board.py --apply — то есть кто-то должен был сам
+    вспомнить и нажать кнопку. Теперь это встроено в get_active_tasks()
+    (см. ниже) и происходит само по себе на каждом цикле любого
+    воркфлоу компании, плюс отдельный cron в
+    .github/workflows/unstick_task_board.yml как подстраховка."""
+    stale = find_stale_tasks(stale_hours)
+    if not stale:
+        return []
+
+    board = _load()
+    now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+    stale_ids = {t["id"] for t in stale}
+    for t in board["tasks"]:
+        if t["id"] in stale_ids:
+            was_status = t["status"]
+            t["status"] = "timed_out"
+            t["updated"] = now_str
+            t["cto_comment"] = (
+                (t.get("cto_comment") or "") +
+                f" [Авто-разморозка {now_str}: висела в '{was_status}' дольше {stale_hours}ч без "
+                "изменений — похоже, выполнявший процесс оборвался (обычно это GitHub Actions "
+                "убивает job по timeout-minutes), а не что кто-то отклонил задачу по существу. "
+                "Слот освобождён. Если задача про реальный код (in_progress) — ветка могла "
+                "остаться в частично изменённом состоянии, стоит проверить репозиторий вручную, "
+                "прежде чем переоткрывать тему заново.]"
+            ).strip()
+    board["last_updated"] = now_str
+    _save(board)
+
+    if notify:
+        _notify_stale(stale, stale_hours)
+    return stale
+
+
+def _notify_stale(stale: list[dict], stale_hours: int) -> None:
+    lines = [f"⏱️ АВТО-РАЗМОРОЗКА ЗАВИСШИХ ЗАДАЧ ({len(stale)} шт., висели дольше {stale_hours}ч):"]
+    for t in stale:
+        lines.append(f"  [{t.get('squad', '?')}] ({t['status']} → timed_out, {t['_age_hours']:.1f}ч): {t.get('title', '')[:100]}")
+    lines.append(
+        "\nЭто НЕ отказ CTO — просто выполнявший процесс где-то оборвался "
+        "(чаще всего таймаут GitHub Actions job), слот освобождён автоматически. "
+        "Если среди них есть in_progress — стоит глянуть ветку в репозитории, "
+        "не осталась ли она в недописанном состоянии, прежде чем переоткрывать тему."
+    )
+    # Импорт нарочно ленивый и обёрнут целиком (не только сам вызов):
+    # workflows/task_board.py и особенно tools/unstick_task_board.py
+    # (у него в .github/workflows/unstick_task_board.yml нет шага pip
+    # install — раньше скрипт был на чистом stdlib, и это осознанно, он
+    # последняя линия защиты и должен запускаться даже если что-то
+    # другое в окружении сломано) не обязаны иметь "requests"
+    # установленным, чтобы просто посчитать активные задачи — а вот
+    # уведомление в Telegram, если библиотека есть, всё равно уйдёт.
+    try:
+        from tools.telegram_report import send_telegram_report
+        send_telegram_report("\n".join(lines))
+    except Exception as e:
+        print(f"[task_board] Не удалось отправить уведомление об авто-разморозке (не критично): {e}")
+
+
+_stale_check_done_this_run = False
+
+
 def get_active_tasks() -> list[dict]:
-    """Задачи в статусе in_progress прямо сейчас."""
+    """Задачи в статусе in_progress прямо сейчас. Перед подсчётом ОДИН
+    РАЗ за запуск процесса подчищает зависшие задачи (reconcile_stale_tasks) —
+    без этого одна убитая GitHub Actions job навсегда съедала бы слот
+    MAX_CONCURRENT, и с каждым таким зависанием реальная параллельность
+    системы тихо сокращалась бы, а не росла (см. workflows/board_meeting.py,
+    workflows/squad_initiative.py — оба считают ёмкость через эту функцию).
+
+    Флаг-guard на модульном уровне не даёт дёргать git на КАЖДЫЙ вызов
+    в рамках одного запуска (get_active_tasks() может вызываться
+    несколько раз за один прогон воркфлоу) — реконсиляция реально
+    нужна не чаще раза в запуск, следующий прогон (через 10-30 минут,
+    см. расписания в .github/workflows/) подхватит всё новое сам."""
+    global _stale_check_done_this_run
+    if not _stale_check_done_this_run:
+        _stale_check_done_this_run = True
+        try:
+            reconcile_stale_tasks()
+        except Exception as e:
+            print(f"[task_board] Авто-разморозка зависших задач не удалась в этот раз (не критично): {e}")
+
     board = _load()
     return [t for t in board["tasks"] if t["status"] == "in_progress"]
 
@@ -149,6 +303,7 @@ def get_board_summary() -> str:
         "in_progress": "🔄 В работе прямо сейчас",
         "done": "✔️  Выполнено",
         "rejected": "❌ Отклонено CTO",
+        "timed_out": "⏱️ Зависла и автоматически разморожена (не отказ CTO — можно переоткрыть)",
         "needs_founder_decision": "🧑‍💻 Требует решения/действия Валика лично",
     }
     for status, label in STATUS_LABELS.items():
