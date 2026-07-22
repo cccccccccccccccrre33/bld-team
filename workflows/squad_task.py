@@ -173,18 +173,18 @@ def task_spans_both_domains(task: str) -> bool:
 
 async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> str:
     """Оба отряда работают НАД ОДНОЙ задачей ПОСЛЕДОВАТЕЛЬНО на одной
-    ветке — каждый берёт свою часть, второй продолжает поверх первого.
+    (своей, изолированной через git worktree) ветке — каждый берёт
+    свою часть, второй продолжает поверх первого.
     """
     from agents.review_gate import run_review_gate
-    from tools.repo_tools import commit_and_push, create_branch, merge_branch_to_main
-    from tools.repo_tools import AI_BRANCH_NAME
+    from tools.repo_tools import commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
     from workflows.cto_approval import cto_approval
-    from workflows.engineering_task import guess_repo, needs_rework
+    from workflows.engineering_task import guess_repo, make_branch_name, needs_rework
 
     repo_name = guess_repo(task)
-    branch_name = AI_BRANCH_NAME
+    branch_name = make_branch_name(task, "ai-relay")
 
-    print(f"[relay] Переключаемся на общую ветку {branch_name} в {repo_name}...")
+    print(f"[relay] Создаём изолированную ветку {branch_name} в {repo_name}...")
     print(create_branch(repo_name, branch_name))
 
     findings = []
@@ -233,7 +233,8 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
     # промежуточного rework-шага.
     if not needs_rework(review_verdict):
         print("[relay] Review Gate: вердикт чист — мержим в main автоматически...")
-        merge_result = merge_branch_to_main(repo_name, branch_name, task)
+        async with get_repo_write_lock(repo_name):
+            merge_result = merge_branch_to_main(repo_name, branch_name, task)
         print(merge_result)
         merge_note = f"\n\n{merge_result}"
     else:
@@ -246,7 +247,8 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
         )
         if cto_approved:
             print(f"[relay] CTO решил мержить несмотря на замечания: {cto_comment}")
-            merge_result = merge_branch_to_main(repo_name, branch_name, f"{task} (approved by CTO despite review notes)")
+            async with get_repo_write_lock(repo_name):
+                merge_result = merge_branch_to_main(repo_name, branch_name, f"{task} (approved by CTO despite review notes)")
             print(merge_result)
             merge_note = f"\n\n🧑‍💼 CTO решил смержить несмотря на замечания: {cto_comment}\n\n{merge_result}"
         else:
