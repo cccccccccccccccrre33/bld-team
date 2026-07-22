@@ -36,15 +36,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 65% шанс пропуска — при 5 проверках в день это в среднем
-      # ~1.75 реальных разговора в сутки, не по расписанию, а как будто
-      # "когда захотели". Это отдельная защита бюджета от Board Meeting.
+      # 35% шанс пропуска (было 65% — снижено по запросу Валика). При 5
+      # проверках в день это в среднем ~3.25 реальных разговора в сутки
+      # вместо прежних ~1.75 — по-прежнему не по жёсткому расписанию, а
+      # "когда захотели", но заметно живее.
       - name: Decide whether to chat
         id: decide
         run: |
           ROLL=$(python3 -c "import random; print(random.randint(1, 100))")
           echo "roll=$ROLL" >> $GITHUB_OUTPUT
-          if [ "$ROLL" -le 65 ]; then
+          if [ "$ROLL" -le 35 ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Не сегодня, не в этот раз (roll=$ROLL/100)"
           else
