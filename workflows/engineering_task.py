@@ -18,6 +18,7 @@ parse_help_signal ниже), а не угадывается по случайн�
 import asyncio
 import re
 import sys
+import uuid
 
 from agents.architecture_council import ARCHITECT_LABELS
 from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
@@ -32,7 +33,7 @@ from agents.review_gate import run_review_gate
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from config.models import BOARD_MODEL_ASSIGNMENTS, EXPANSION_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
-from tools.repo_tools import AI_BRANCH_NAME, commit_and_push, create_branch, merge_branch_to_main
+from tools.repo_tools import commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
 from tools.telegram_report import send_telegram_report
 from workflows._common import compile_brief, curate_knowledge, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
@@ -113,6 +114,15 @@ def slugify(text: str, max_len: int = 40) -> str:
     return slug[:max_len] or "task"
 
 
+def make_branch_name(task: str, branch_prefix: str) -> str:
+    """Уникальная ветка на задачу: читаемый слаг + короткий случайный
+    суффикс (защита от коллизий, если два похожих по формулировке
+    задания стартуют одновременно — например, два человека независимо
+    друг от друга нашли одну и ту же проблему до того, как is_duplicate()
+    на доске задач успела это заметить)."""
+    return f"{branch_prefix}/{slugify(task)}-{uuid.uuid4().hex[:8]}"
+
+
 def guess_repo(task: str) -> str:
     """Простая эвристика: если задача явно про фронт/панель — bld-panel,
     иначе по умолчанию bld-system."""
@@ -179,11 +189,20 @@ async def run_engineering_task(
     force_consult: если True — привлечь пул отряда независимо от того,
     упомянул ли лид ключевые слова HELP_KEYWORDS (используется squad_task.py,
     чтобы отряд всегда работал как команда, а не только лид в одиночку).
-    """
-    repo_name = repo_name or guess_repo(task)
-    branch_name = AI_BRANCH_NAME
 
-    print(f"Переключаемся на общую ветку {branch_name} в {repo_name}...")
+    Ветка — уникальная на эту задачу (create_branch создаёт для неё
+    отдельную изолированную git worktree, см. tools/repo_tools.py) — это
+    и позволяет нескольким людям одновременно вызывать эту функцию с
+    одним и тем же repo_name безопасно (см.
+    workflows/individual_initiative.py: несколько человек за один тик).
+    Единственное место, где параллельные вызовы всё ещё могут
+    столкнуться — сам merge_branch_to_main (он трогает общий клон, а
+    не per-task worktree) — поэтому именно вокруг него, а не вокруг
+    всей функции, стоит get_repo_write_lock(repo_name)."""
+    repo_name = repo_name or guess_repo(task)
+    branch_name = make_branch_name(task, branch_prefix)
+
+    print(f"Создаём изолированную ветку {branch_name} в {repo_name}...")
     print(create_branch(repo_name, branch_name))
 
     lead_model = lead_model or BOARD_MODEL_ASSIGNMENTS.get("lead_engineer", "gpt-5.4")
@@ -321,7 +340,8 @@ Review Gate (Chief Architect / Reviewer / Failure Engineer — все
     # основатель: см. workflows/cto_approval.py.
     if not needs_rework(review_verdict):
         print("Review Gate: вердикт чист — мержим в main автоматически...")
-        merge_result = merge_branch_to_main(repo_name, branch_name, task)
+        async with get_repo_write_lock(repo_name):
+            merge_result = merge_branch_to_main(repo_name, branch_name, task)
         print(merge_result)
         merge_note = f"\n\n{merge_result}"
     else:
@@ -335,7 +355,8 @@ Review Gate (Chief Architect / Reviewer / Failure Engineer — все
         )
         if cto_approved:
             print(f"CTO решил мержить несмотря на замечания: {cto_comment}")
-            merge_result = merge_branch_to_main(repo_name, branch_name, f"{task} (approved by CTO despite review notes)")
+            async with get_repo_write_lock(repo_name):
+                merge_result = merge_branch_to_main(repo_name, branch_name, f"{task} (approved by CTO despite review notes)")
             print(merge_result)
             merge_note = f"\n\n🧑‍💼 CTO решил смержить несмотря на замечания: {cto_comment}\n\n{merge_result}"
         else:
