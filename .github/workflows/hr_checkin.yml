@@ -24,12 +24,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 50% шанс пропуска — не каждый день нужен чек-ин
+      # 30% шанс пропуска (было 50% — снижено по запросу Валика)
       - name: Decide whether to run
         id: decide
         run: |
           ROLL=$(python3 -c "import random; print(random.randint(1, 10))")
-          if [ "$ROLL" -le 5 ]; then
+          if [ "$ROLL" -le 3 ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT
