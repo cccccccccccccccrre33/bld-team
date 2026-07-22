@@ -24,6 +24,7 @@ run_engineering_task (helper_pool по умолчанию = весь общий 
 
 import asyncio
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -121,14 +122,35 @@ def weighted_pick() -> str:
     """Молодые выбираются заметно чаще (по просьбе Валика — они должны
     жить в системе), но не эксклюзивно — сеньоры/специалисты тоже
     иногда берут инициативу. ~65% попаданий на 19 молодых, ~35% на
-    остальных 17. ВНУТРИ каждой группы — честный выбор через
-    fair_sample (общий трекер участия по всей компании), чтобы внутри
-    самой группы молодых/сеньоров тоже не было перекоса в пользу
-    одних и тех же людей."""
+    остальных. ВНУТРИ каждой группы — честный выбор через fair_sample
+    (общий трекер участия по всей компании), чтобы внутри самой группы
+    молодых/сеньоров тоже не было перекоса в пользу одних и тех же
+    людей."""
     if random.random() < 0.65:
         return fair_sample(list(YOUNG_NAMES), k=1)[0]
     others = [n for n in ALL_BUILDERS if n not in YOUNG_NAMES]
     return fair_sample(others, k=1)[0]
+
+
+def weighted_pick_many(k: int) -> list[str]:
+    """Как weighted_pick(), но сразу k РАЗНЫХ человек — нужно, чтобы за
+    один тик компания могла реально работать параллельно, а не по
+    одному человеку за раз (см. комментарий у main() ниже про то,
+    почему "один случайный человек несколько раз в день" ощущался как
+    "просто говорящие головы", а не живая экосистема)."""
+    chosen: list[str] = []
+    seen: set[str] = set()
+    attempts = 0
+    # Немного попыток с запасом на случай коллизий fair_sample —
+    # людей в ростере намного больше, чем реалистичный k, так что
+    # переполнения на практике не будет.
+    while len(chosen) < k and attempts < k * 5:
+        attempts += 1
+        candidate = weighted_pick()
+        if candidate not in seen:
+            seen.add(candidate)
+            chosen.append(candidate)
+    return chosen
 
 
 def find_domain_consultant(name: str, title: str, reason: str):
@@ -173,10 +195,16 @@ async def scout_and_propose(name: str) -> dict | None:
     person = ALL_BUILDERS[name](can_write=False)
     is_young = name in YOUNG_NAMES
 
-    notebook_block = ""
-    if is_young:
-        notebook_entries = load_notebook(name)
-        notebook_block = f"""
+    # РАНЬШЕ личный дневник (непрерывная нить между запусками) был
+    # только у 19 "молодых гениев" — у остальных ~167 человек компании
+    # каждый запуск начинался с чистого листа, без памяти о том, что
+    # сам делал вчера. Именно это и создавало ощущение "просто
+    # говорящих голов", а не живых сотрудников: непрерывность — это
+    # то, что отличает человека, реально погружённого в работу, от
+    # того, кто отвечает на вопрос и забывает всё сразу после. Дневник
+    # теперь у ВСЕХ — не только у молодых.
+    notebook_entries = load_notebook(name)
+    notebook_block = f"""
 Твой личный дневник (что тебя занимало в прошлые разы — продолжай
 эту нить, если она ещё актуальна, или переключись на новое, если
 исчерпал тему):
@@ -213,12 +241,12 @@ async def scout_and_propose(name: str) -> dict | None:
     response = await person.run(prompt)
     text = response.text.strip()
 
-    if is_young:
-        # Дневник пишется ВСЕГДА — даже "ничего конкретного не нашёл,
-        # но смотрел туда-то" — именно это создаёт ощущение непрерывной
-        # вовлечённости, а не редких случайных вспышек.
-        diary_entry = text[:400] if len(text) > 30 else "Заходил посмотреть код, пока без конкретных зацепок."
-        save_notebook_entry(name, diary_entry)
+    # Дневник пишется ВСЕГДА, для любого человека — даже "ничего
+    # конкретного не нашёл, но смотрел туда-то" — именно это создаёт
+    # ощущение непрерывной вовлечённости, а не редких случайных
+    # вспышек.
+    diary_entry = text[:400] if len(text) > 30 else "Заходил посмотреть код, пока без конкретных зацепок."
+    save_notebook_entry(name, diary_entry)
 
     if "НЕТ ЗАДАЧИ" in text.upper() or len(text) < 30:
         return None
@@ -262,23 +290,41 @@ async def run_individual_initiative(name: str | None = None) -> None:
 
     print(f"[{name}] Proposal: {title} (склонность: {'к профильному эксперту' if confident else 'к CTO'})")
 
-    task_id = add_task(title, name, status="proposed", reason=reason, how=how)
-
-    # Всегда консультируемся — "уверенность" влияет только на то, к
-    # кому идти. Сначала пробуем найти профильного эксперта (его
-    # реального "кумира" в этой области); если такого нет — CTO.
-    consultant_key, consultant_agent, consultant_label = (
-        find_domain_consultant(name, title, reason) if confident else (None, None, None)
-    )
-
-    if consultant_agent:
-        print(f"[{name}] Идёт посоветоваться с профильным экспертом: {consultant_label}")
-        approved, comment = await consult(consultant_agent, consultant_label, label, title, reason, how)
-        verdict_source = consultant_label
+    # РАНЬШЕ: консультация была ОБЯЗАТЕЛЬНОЙ всегда, и "УВЕРЕН" влияло
+    # только на то, к кому идти (эксперт или CTO) — не на то, идти ли
+    # вообще. По прямому запросу Валика ("максимально свободно, не
+    # всегда идти к сто или к кому-то старшему чтобы попросить
+    # разрешения — можно самому брать и реализовывать") — теперь
+    # "УВЕРЕН" значит именно это: человек сам себе даёт добро и сразу
+    # переходит к реализации, без блокирующего разговора перед стартом.
+    # Это НЕ отмена контроля качества — Review Gate (Chief Architect +
+    # Reviewer + Failure Engineer + реальный прогон тестов, см.
+    # workflows/engineering_task.py) всё равно проверяет готовый код
+    # перед мержем и имеет реальное вето. Меняется только МОМЕНТ
+    # проверки: не "разрешите начать" до того, как что-либо сделано, а
+    # "проверьте результат" после. "СПРОСИТЬ CTO" по-прежнему уходит на
+    # консультацию ДО реализации — это осталось для случаев, когда
+    # сам человек не уверен, что тема целиком в его зоне.
+    if confident:
+        task_id = add_task(title, name, status="self_approved", reason=reason, how=how)
+        approved, verdict_source = True, "самостоятельно"
+        comment = (
+            "Взял в работу сам, без предварительного согласования — "
+            "уверен, что это чётко в своей специализации. Review Gate "
+            "проверит готовый результат перед мержем."
+        )
+        print(f"[{name}] Уверен в своей зоне — берёт в работу самостоятельно, без approval")
     else:
-        print(f"[{name}] Идёт советоваться с CTO...")
-        approved, comment = await cto_approval(label, title, reason, how)
-        verdict_source = "🧑‍💼 CTO"
+        task_id = add_task(title, name, status="proposed", reason=reason, how=how)
+        consultant_key, consultant_agent, consultant_label = find_domain_consultant(name, title, reason)
+        if consultant_agent:
+            print(f"[{name}] Идёт посоветоваться с профильным экспертом: {consultant_label}")
+            approved, comment = await consult(consultant_agent, consultant_label, label, title, reason, how)
+            verdict_source = consultant_label
+        else:
+            print(f"[{name}] Идёт советоваться с CTO...")
+            approved, comment = await cto_approval(label, title, reason, how)
+            verdict_source = "🧑‍💼 CTO"
 
     if not approved:
         update_task_status(task_id, "rejected", comment)
@@ -288,12 +334,14 @@ async def run_individual_initiative(name: str | None = None) -> None:
         )
         print(report)
         send_telegram_report(report)
-        if name in YOUNG_NAMES:
-            save_notebook_entry(name, f"Предложил '{title}' — отклонили ({comment[:150]}). Подумаю дальше.")
+        save_notebook_entry(name, f"Предложил '{title}' — отклонили ({comment[:150]}). Подумаю дальше.")
         return
 
     update_task_status(task_id, "in_progress", comment)
-    verdict_note = f"✅ Одобрено ({verdict_source}): {comment}"
+    verdict_note = (
+        f"🔓 Взял сам, без согласования: {comment}" if verdict_source == "самостоятельно"
+        else f"✅ Одобрено ({verdict_source}): {comment}"
+    )
 
     # Реализация — сам инициатор становится "лидом" этой задачи (со
     # своим полным write-доступом), может привлечь помощь из общего
@@ -315,26 +363,57 @@ async def run_individual_initiative(name: str | None = None) -> None:
     print(f"\n{brief}")
     send_telegram_report(brief)
     await curate_knowledge(f"Инициатива: {label}", full_report)
-    if name in YOUNG_NAMES:
-        save_notebook_entry(name, f"Реализовал '{title}' — одобрили и довёл до кода. Дальше можно копать глубже в эту область или переключиться.")
+    save_notebook_entry(name, f"Реализовал '{title}' — довёл до кода. Дальше можно копать глубже в эту область или переключиться.")
+
+
+# РАНЬШЕ каждый тик этого воркфлоу (3 раза в день по cron) запускал
+# РОВНО ОДНОГО случайного человека — то есть даже если "людей много",
+# в моменте компанией была буквально одна голова. Именно это и
+# выглядело как "по одному вызываются по расписанию", а не как живая
+# экосистема, где много людей одновременно заняты каждый своим делом.
+# Дефолт батча читается из INDIVIDUAL_INITIATIVE_BATCH_SIZE (GitHub
+# Actions vars, без правки кода) — можно тюнить под факт: сколько
+# реально стоит один тик и не начинает ли параллельный git push/merge
+# в main из нескольких веток одновременно конфликтовать чаще, чем
+# приемлемо. Явное имя человека в CLI (ручной workflow_dispatch с
+# конкретным person) по-прежнему запускает ровно одного — это осознанный
+# точечный режим, не тянет за собой остальных.
+DEFAULT_BATCH_SIZE = int(os.getenv("INDIVIDUAL_INITIATIVE_BATCH_SIZE", "4"))
 
 
 async def main():
-    name = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ALL_BUILDERS else None
+    explicit_name = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ALL_BUILDERS else None
 
     print("Синхронизация репозиториев...")
     print(clone_or_update_repos())
 
-    try:
-        await run_individual_initiative(name)
-    except Exception as e:
-        error_alert = (
-            "🔴 СБОЙ В INDIVIDUAL INITIATIVE\n\n"
-            f"{type(e).__name__}: {e}\n\n"
-            "Проверь полный лог этого запуска в GitHub Actions для деталей."
-        )
-        print(error_alert)
-        send_telegram_report(error_alert)
+    if explicit_name:
+        names = [explicit_name]
+    else:
+        # available_capacity() уже учитывает MAX_CONCURRENT_TASKS — не
+        # смысла заводить больше людей за тик, чем есть реальных слотов
+        # на доске, они всё равно упрутся в can_take_more() внутри
+        # scout_and_propose и просто ничего не предложат.
+        from workflows.task_board import available_capacity
+        batch_size = max(1, min(DEFAULT_BATCH_SIZE, available_capacity() or 1))
+        names = weighted_pick_many(batch_size)
+
+    print(f"Запускаем параллельно: {', '.join(names)}")
+
+    results = await asyncio.gather(
+        *(run_individual_initiative(n) for n in names),
+        return_exceptions=True,
+    )
+
+    for name, result in zip(names, results):
+        if isinstance(result, Exception):
+            error_alert = (
+                f"🔴 СБОЙ В INDIVIDUAL INITIATIVE ({name})\n\n"
+                f"{type(result).__name__}: {result}\n\n"
+                "Проверь полный лог этого запуска в GitHub Actions для деталей."
+            )
+            print(error_alert)
+            send_telegram_report(error_alert)
 
 
 if __name__ == "__main__":
