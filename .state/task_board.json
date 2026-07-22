@@ -469,7 +469,18 @@
       "how": "",
       "created": "21.07.2026 16:21",
       "cto_comment": ""
+    },
+    {
+      "id": "alpha-20260722074453",
+      "title": "Подготовить короткий ADR на 1 страницу, формально определяющий trust-authoritative snapshot boundary и единый allowed flow обновления `ForemanTrust` (entrypoint, unique key, ledger, запрет прямых вызовов из engine).",
+      "squad": "alpha",
+      "status": "in_progress",
+      "reason": "Извлечено как 'следующий шаг' из заседания совета директоров.",
+      "how": "",
+      "created": "22.07.2026 07:44",
+      "updated": "22.07.2026 07:44",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "21.07.2026 16:21"
+  "last_updated": "22.07.2026 07:44"
 }
