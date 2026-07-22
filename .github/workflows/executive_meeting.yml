@@ -31,15 +31,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 40% шанс пропуска — правление и так собирается раз в сутки,
-      # не нужно душить его слишком сильно, но защита от 100%-й
-      # предсказуемости/расхода всё равно нужна.
+      # 20% шанс пропуска (было 40% — снижено по запросу Валика: реже
+      # молчать, чаще реально работать). Не 0%, чтобы не было ощущения
+      # жёсткого таймера — но и не "почти половину дней тишина".
       - name: Decide whether to meet
         id: decide
         run: |
           ROLL=$(python3 -c "import random; print(random.randint(1, 10))")
           echo "roll=$ROLL" >> $GITHUB_OUTPUT
-          if [ "$ROLL" -le 4 ]; then
+          if [ "$ROLL" -le 2 ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Правление решило не собираться сегодня (roll=$ROLL/10)"
           else
