@@ -51,6 +51,7 @@ jobs:
           GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
           TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+          MAX_CONCURRENT_TASKS:     ${{ vars.MAX_CONCURRENT_TASKS }}
         run: |
           SQUAD="${{ github.event.inputs.squad }}"
           if [ -n "$SQUAD" ]; then
