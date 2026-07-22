@@ -558,6 +558,17 @@
       "created": "22.07.2026 12:31",
       "updated": "22.07.2026 15:39",
       "cto_comment": "[Авто-разморозка 22.07.2026 15:39: висела в 'in_progress' дольше 2ч без изменений — похоже, выполнявший процесс оборвался (обычно это GitHub Actions убивает job по timeout-minutes), а не что кто-то отклонил задачу по существу. Слот освобождён. Если задача про реальный код (in_progress) — ветка могла остаться в частично изменённом состоянии, стоит проверить репозиторий вручную, прежде чем переоткрывать тему заново.]"
+    },
+    {
+      "id": "pulse:melbourne_ml+shenzhen_fintech+polytechnique-20260722153917",
+      "title": "Пройти по фактическим путям формирования owner-safe panel payload для deviation/anomaly: от всех producers (включая legacy `ConstructionEvent`) через `normalize_precision_deviation_response` до `build_owner_insights_payload` и всех прямых serializers/routers, выявить любые обходы нормализатора и закрыть их (заставить все пути проходить через нормализацию/фильтрацию internal/dry-run/risk сигналов).",
+      "squad": "pulse:melbourne_ml+shenzhen_fintech+polytechnique",
+      "status": "in_progress",
+      "reason": "Это не дублирование: на доске уже есть узкая задача про точку фильтрации в `normalize_precision_deviation_response`, а здесь речь про полный аудит всех owner-safe путей и обходов нормализатора — это шире и по инварианту системы критично. В коде `build_owner_insights_payload()` действительно нормализует state, но я уже вижу отдельные internal API, которые работают с `computed_state` напрямую, так что риск “тихого обхода” реален; закрыть все owner-facing пути единым контрактом сейчас важнее, чем очередная красивая фича.",
+      "how": "",
+      "created": "22.07.2026 15:39",
+      "updated": "22.07.2026 15:39",
+      "cto_comment": ""
     }
   ],
   "last_updated": "22.07.2026 15:39"
