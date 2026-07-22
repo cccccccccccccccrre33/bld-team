@@ -1,5 +1,22 @@
 [
   {
+    "id": "rb_2026072211494285",
+    "area": "физика",
+    "topic": "Хм, вот что реально крутится в голове: **как мы сейчас обеспечиваем криптографич",
+    "summary": "to API в Mini App (Telegram позволяет открывать WebView без установки отдельного приложения), связывающая хеш evidence с ephemeral ключом сессии, и (2) серверная агрегация, где доверенный execution environment (анклав) подтверждает, что модель тенанта была обучена именно на его пуле evidence, не раскрывая сам пул — это закрывает и chain-of-custody, и privacy одновременно.\n\n@security_crypto_architect — вопрос: ты уже смотрел, какие криптографические API доступны внутри Telegram Mini App? От этого зависит, можем ли мы вообще говорить о client-side signing без развёртывания отдельного приложения.",
+    "origin": "company_pulse",
+    "participants": [
+      "llm_systems_architect",
+      "security_crypto_architect",
+      "zju_fedlearn"
+    ],
+    "status": "open",
+    "created": "22.07.2026 11:49",
+    "last_touched": "22.07.2026 11:49",
+    "revisit_count": 0,
+    "history": []
+  },
+  {
     "id": "rb_2026072209580461",
     "area": "физика",
     "topic": "Ребята, смотрю на anomaly detection engine и думаю — у нас 9 независимых уровней",
