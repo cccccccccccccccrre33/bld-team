@@ -38,14 +38,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Случайный пропуск: ~30% шанс не проводить заседание
-      # Это даёт ощущение что совет собирается по своему желанию, а не по таймеру
+      # Случайный пропуск: ~20% шанс не проводить заседание (было 30% —
+      # снижено по прямому запросу Валика: слишком много тиков впустую
+      # не соответствует "реальной 24/7 экосистеме"). Не убран совсем —
+      # немного случайности всё ещё даёт ощущение, что совет собирается
+      # по своему желанию, а не строго по таймеру.
       - name: Decide whether to meet
         id: decide
         run: |
           ROLL=$(python3 -c "import random; print(random.randint(1, 10))")
           echo "roll=$ROLL" >> $GITHUB_OUTPUT
-          if [ "$ROLL" -le 3 ]; then
+          if [ "$ROLL" -le 2 ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Совет решил не собираться сегодня (roll=$ROLL/10)"
           else
