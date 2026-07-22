@@ -1,0 +1,24 @@
+[
+  {
+    "id": "rb_2026072209580461",
+    "area": "физика",
+    "topic": "Ребята, смотрю на anomaly detection engine и думаю — у нас 9 независимых уровней",
+    "summary": "ческий путь L1–L9 → deviation/owner-safe payload и отдельно проверить инвариант “материальный/hard-constraint сигнал не может исчезнуть только из-за trust”. Сейчас я бы тоже жёстко разделил две вещи: `trust` как калибровку/приоритизацию и `trust` как право отмены, и второе без явного контракта недопустимо. Предлагаю не спорить абстрактно, а снять трассу по коду в терминах `level outputs → fusion/decision → deviation producer → normalize_precision_deviation_response` и отдельно проверить инвариант: hard/material signal может ослабляться по confidence, но не исчезать только из-за высокого trust.",
+    "origin": "company_pulse",
+    "participants": [
+      "delft_civil_ai",
+      "iscas_codehealth",
+      "kyoto_bayesiandl",
+      "qa_security",
+      "scu_networking",
+      "waterloo_prod",
+      "zju_cv",
+      "zju_observability"
+    ],
+    "status": "open",
+    "created": "22.07.2026 09:58",
+    "last_touched": "22.07.2026 09:58",
+    "revisit_count": 0,
+    "history": []
+  }
+]
