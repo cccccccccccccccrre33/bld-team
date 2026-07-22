@@ -1,72 +1,61 @@
 """
-Разовый скрипт для разгребания зависших задач в .state/task_board.json.
+CLI для разгребания зависших задач в .state/task_board.json — ручной
+доступ к той же логике, что теперь встроена в workflows/task_board.py
+(reconcile_stale_tasks) и срабатывает АВТОМАТИЧЕСКИ на каждом прогоне
+любого воркфлоу компании (через get_active_tasks()), плюс отдельным
+cron'ом в .github/workflows/unstick_task_board.yml как подстраховка.
 
-Проблема: до фикса в engineering_task.py/company_pulse.py и т.д. исключение
-внутри run_engineering_task() навсегда оставляло задачу в статусе
-"in_progress" — что упёрлось в MAX_CONCURRENT=4 и молча заблокировало
-individual_initiative/squad_initiative.
+Раньше это был "разовый скрипт" (см. историю в git) — реализация
+дублировала свою собственную копию проверки таймстампов прямо здесь и
+запускалась только руками через workflow_dispatch. Это и было причиной
+того, что зависшие задачи копились неделями: единственный способ их
+разморозить требовал, чтобы кто-то вспомнил зайти в GitHub Actions и
+нажать кнопку. Теперь эта функция ЖИВЁТ в workflows/task_board.py
+(единый источник правды, как и остальная логика доски задач), а этот
+файл — просто тонкая обёртка для ручного/CI-запуска.
 
-Запуск (из корня репозитория bld-team, где лежит .state/):
-    python tools/unstick_task_board.py            # только посмотреть
+Использование (из корня репозитория bld-team, где лежит .state/):
+    python tools/unstick_task_board.py            # только посмотреть, ничего не менять
     python tools/unstick_task_board.py --apply     # реально исправить и закоммитить
-
-Логика: все задачи в статусе "in_progress" старше STALE_HOURS часов
-считаются зависшими (после фикса реализация занимает минуты, не дни) и
-переводятся в "rejected" с пометкой, что это ручная реконсиляция —
-их нужно будет переоткрыть по новой, если тема ещё актуальна.
 """
 
 import argparse
-import json
-import subprocess
-from datetime import datetime
+import sys
 from pathlib import Path
 
-BOARD_PATH = Path(".state/task_board.json")
-STALE_HOURS = 2  # с новым кодом реализация не должна висеть дольше
+# Запуск как "python tools/unstick_task_board.py" кладёт на sys.path
+# только саму папку tools/, а не корень репозитория — без этой строки
+# "from workflows.task_board import ..." ниже падает с
+# ModuleNotFoundError (проверено вручную перед коммитом). main_*.py в
+# корне репозитория с этим не сталкиваются, потому что и так уже лежат
+# в корне — а этот скрипт находится на уровень глубже.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from workflows.task_board import STALE_HOURS, find_stale_tasks, reconcile_stale_tasks
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--apply", action="store_true", help="реально сохранить изменения и закоммитить")
+    parser.add_argument("--apply", action="store_true", help="реально сохранить изменения, закоммитить и уведомить в Telegram")
+    parser.add_argument("--hours", type=float, default=STALE_HOURS, help=f"порог в часах (по умолчанию {STALE_HOURS})")
     args = parser.parse_args()
 
-    board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
-    now = datetime.now()
-
-    changed = 0
-    for t in board["tasks"]:
-        if t["status"] != "in_progress":
-            continue
-        created = datetime.strptime(t["created"], "%d.%m.%Y %H:%M")
-        age_hours = (now - created).total_seconds() / 3600
-        if age_hours < STALE_HOURS:
-            continue
-        print(f"ЗАВИСЛА ({age_hours:.0f}ч): [{t['squad']}] {t['title'][:80]}")
-        if args.apply:
-            t["status"] = "rejected"
-            t["cto_comment"] = (
-                (t.get("cto_comment") or "")
-                + f" [Реконсиляция {now.strftime('%d.%m.%Y %H:%M')}: задача зависла из-за необработанного "
-                "исключения в старой версии engineering_task.py, автоматически закрыта. "
-                "Если тема ещё актуальна — предложите заново, теперь она пройдёт через защищённый пайплайн.]"
-            ).strip()
-            changed += 1
-
     if not args.apply:
-        print(f"\n(сухой прогон — {changed if changed else 'см. выше'} задач будет затронуто; добавь --apply чтобы применить)")
+        stale = find_stale_tasks(args.hours)
+        if not stale:
+            print(f"Зависших задач (старше {args.hours}ч) не найдено.")
+            return
+        print(f"Найдено зависших задач: {len(stale)} (порог: {args.hours}ч)\n")
+        for t in stale:
+            print(f"  [{t.get('squad', '?')}] ({t['status']}, {t['_age_hours']:.1f}ч): {t.get('title', '')[:90]}")
+        print("\n(сухой прогон — ничего не изменено; добавь --apply чтобы реально пометить как timed_out и закоммитить)")
         return
 
-    board["last_updated"] = now.strftime("%d.%m.%Y %H:%M")
-    BOARD_PATH.write_text(json.dumps(board, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nИсправлено задач: {changed}. Коммичу...")
-
-    subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
-    subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
-    subprocess.run(["git", "add", str(BOARD_PATH)], check=True)
-    subprocess.run(["git", "commit", "-m", "chore: реконсиляция зависших in_progress задач task board"], check=True)
-    subprocess.run(["git", "push"], check=True)
-    print("Готово.")
+    fixed = reconcile_stale_tasks(args.hours, notify=True)
+    if not fixed:
+        print(f"Зависших задач (старше {args.hours}ч) не найдено — база уже чистая.")
+        return
+    print(f"Разморожено задач: {len(fixed)} (помечены как 'timed_out', закоммичено, отправлено уведомление в Telegram).")
 
 
 if __name__ == "__main__":
