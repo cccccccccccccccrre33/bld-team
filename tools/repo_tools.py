@@ -12,12 +12,92 @@ function calling в OpenAI/Anthropic SDK) — просто передай фун
 в список tools агента, оборачивать в декораторы не обязательно.
 """
 
+import asyncio
+import contextvars
 import os
 import subprocess
 from pathlib import Path
 
 WORKDIR = Path(os.getenv("AI_TEAM_WORKDIR", "./repos")).resolve()
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+
+# ============================================================
+# Изоляция параллельных задач по репозиторию — появилась вместе с
+# переходом individual_initiative.py на параллельный запуск нескольких
+# людей за один тик (см. workflows/individual_initiative.py).
+#
+# РАНЬШЕ у bld-system и bld-panel была ОДНА расшаренная рабочая
+# директория на диске, и ВСЕ задачи писали в ОДНУ и ту же постоянную
+# ветку (AI_BRANCH_NAME) — это было осознанным решением Валика в своё
+# время ("не хочу, чтобы веток становилось много"), но оно физически
+# не совместимо с несколькими людьми, реально пишущими код в один
+# репозиторий одновременно: два процесса, переключающие и коммитящие в
+# одну и ту же директорию/ветку разом — это гонка, а не просто
+# неаккуратность.
+#
+# ТЕПЕРЬ: у каждой задачи снова СВОЯ ветка (см. slugify-генерацию в
+# workflows/engineering_task.py), но живёт она в изолированной рабочей
+# копии через `git worktree` (WORKTREES_DIR ниже) — отдельная
+# директория на диске на отдельной ветке, при этом все worktree одного
+# репозитория делят один и тот же объектный банк git (это ровно то, для
+# чего worktree и придуман — параллельные чек-ауты одного репо). Ветка
+# и рабочая копия удаляются автоматически сразу после успешного мержа
+# (см. merge_branch_to_main) — то есть исходное желание Валика "не
+# хочу, чтобы веток становилось много" выполняется само, а не ценой
+# отказа от параллелизма.
+#
+# Из всего цикла (ветка -> write_file -> commit_and_push -> тесты ->
+# review) РЕАЛЬНО общий (не per-worktree) ресурс остался только один —
+# сама ветка main в общем клоне, в которую мержат. Поэтому лок ниже
+# больше не держится на весь цикл задачи (это было бы избыточно и
+# просто убивало бы параллелизм обратно до 1 на репозиторий) — он нужен
+# ТОЛЬКО вокруг самого merge_branch_to_main, см. его использование в
+# workflows/engineering_task.py и workflows/squad_task.py.
+_REPO_WRITE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def get_repo_write_lock(repo_name: str) -> asyncio.Lock:
+    """Лок ТОЛЬКО на сам merge_branch_to_main (checkout main -> merge ->
+    push в общем клоне) — не на весь инженерный цикл. write_file/
+    commit_and_push/run_test_suite безопасны параллельно сами по себе,
+    потому что у каждой задачи своя изолированная git worktree-копия
+    (см. create_branch ниже)."""
+    lock = _REPO_WRITE_LOCKS.get(repo_name)
+    if lock is None:
+        lock = asyncio.Lock()
+        _REPO_WRITE_LOCKS[repo_name] = lock
+    return lock
+
+
+# ContextVar (не обычный dict!) — у каждой asyncio.Task (в т.ч.
+# созданной через asyncio.gather в individual_initiative.py) СВОЯ копия
+# контекста: если задача A вызвала create_branch и это записало
+# "активная worktree для bld-system = .../A" в контекст задачи A, то
+# задача B, работающая параллельно с ней над тем же repo_name, эту
+# запись не увидит — у неё либо нет активной worktree (ещё не звала
+# create_branch), либо своя собственная. Именно это и позволяет
+# write_file(repo_name=...) — БЕЗ branch_name в сигнатуре, потому что
+# агентам её менять нельзя, схема тулов уже зафиксирована — понимать,
+# в какую именно рабочую копию писать, не путая задачи между собой.
+_ACTIVE_WORKTREE: contextvars.ContextVar[dict] = contextvars.ContextVar(
+    "_active_worktree", default={}
+)
+
+
+def _set_active_worktree(repo_name: str, path: "Path | None") -> None:
+    mapping = dict(_ACTIVE_WORKTREE.get())
+    if path is None:
+        mapping.pop(repo_name, None)
+    else:
+        mapping[repo_name] = path
+    _ACTIVE_WORKTREE.set(mapping)
+
+
+def _get_active_worktree(repo_name: str):
+    return _ACTIVE_WORKTREE.get().get(repo_name)
+
+
+WORKTREES_DIR = WORKDIR / "_worktrees"
 
 REPOS = {
     "bld-system": "github.com/cccccccccccccccrre33/bld-system.git",
@@ -37,6 +117,17 @@ def _repo_path(repo_name: str) -> Path:
     if repo_name not in REPOS:
         raise ValueError(f"Неизвестный репозиторий: {repo_name}. Доступны: {list(REPOS)}")
     return WORKDIR / repo_name
+
+
+def _work_path(repo_name: str) -> Path:
+    """Путь, с которым реально работают git-инструменты для этого
+    репозитория В ЭТОЙ асинхронной задаче: если задача уже вызвала
+    create_branch — её собственная изолированная worktree-копия (на её
+    собственной ветке); иначе — общий клон, который теперь НИКОГДА не
+    переключается на другую ветку и всегда остаётся на main (безопасно
+    читать параллельно скольким угодно задачам сразу — до create_branch
+    все инструменты чтения тоже идут через эту функцию)."""
+    return _get_active_worktree(repo_name) or _repo_path(repo_name)
 
 
 class RepoSyncError(RuntimeError):
@@ -99,7 +190,7 @@ def list_repo_files(repo_name: str, subpath: str = ".") -> str:
         repo_name: 'bld-system' или 'bld-panel'.
         subpath: относительный путь внутри репозитория, '.' для корня.
     """
-    base = _repo_path(repo_name) / subpath
+    base = _work_path(repo_name) / subpath
     if not base.exists():
         return f"Путь не найден: {subpath}"
     lines = []
@@ -119,7 +210,7 @@ def read_file(repo_name: str, file_path: str, max_chars: int = 8000) -> str:
         file_path: путь к файлу относительно корня репозитория.
         max_chars: ограничение на размер вывода (защита контекста).
     """
-    full_path = _repo_path(repo_name) / file_path
+    full_path = _work_path(repo_name) / file_path
     if not full_path.exists() or not full_path.is_file():
         return f"Файл не найден: {file_path}"
     if full_path.suffix not in TEXT_EXTENSIONS:
@@ -137,7 +228,7 @@ def git_log(repo_name: str, limit: int = 20) -> str:
         repo_name: 'bld-system' или 'bld-panel'.
         limit: сколько последних коммитов вернуть.
     """
-    path = _repo_path(repo_name)
+    path = _work_path(repo_name)
     out = subprocess.run(
         ["git", "-C", str(path), "log", f"-{limit}",
          "--pretty=format:%h | %ad | %an | %s", "--date=short"],
@@ -153,7 +244,7 @@ def git_diff(repo_name: str, commit_hash: str) -> str:
         repo_name: 'bld-system' или 'bld-panel'.
         commit_hash: хэш коммита (можно короткий, из git_log).
     """
-    path = _repo_path(repo_name)
+    path = _work_path(repo_name)
     out = subprocess.run(
         ["git", "-C", str(path), "show", commit_hash, "--stat", "-p"],
         capture_output=True, text=True,
@@ -172,7 +263,7 @@ def grep_repo(repo_name: str, pattern: str, file_glob: str = "*") -> str:
         pattern: строка или regex для поиска.
         file_glob: маска файлов, например '*.py'.
     """
-    path = _repo_path(repo_name)
+    path = _work_path(repo_name)
     out = subprocess.run(
         ["git", "-C", str(path), "grep", "-n", "-I", pattern, "--", file_glob],
         capture_output=True, text=True,
@@ -197,9 +288,10 @@ def grep_repo(repo_name: str, pattern: str, file_glob: str = "*") -> str:
 
 
 def run_test_suite(repo_name: str, test_path: str = "", timeout_seconds: int = 300) -> str:
-    """Реально запускает pytest в репозитории (на ТЕКУЩЕЙ выбранной
-    ветке — обычно AI_BRANCH_NAME) и возвращает фактический результат:
-    сколько тестов прошло/упало, и краткий вывод первых упавших.
+    """Реально запускает pytest в изолированной рабочей копии этой
+    задачи (см. create_branch/_work_path) и возвращает фактический
+    результат: сколько тестов прошло/упало, и краткий вывод первых
+    упавших.
 
     Это НЕ мнение модели — это детерминированный результат выполнения
     кода. Используется Review Gate'ом как объективная проверка поверх
@@ -214,7 +306,7 @@ def run_test_suite(repo_name: str, test_path: str = "", timeout_seconds: int = 3
             (например бесконечный цикл в сгенерированном коде) — без
             этого один плохой тест может повесить весь workflow.
     """
-    path = _repo_path(repo_name)
+    path = _work_path(repo_name)
     target = str(path / test_path) if test_path else str(path)
 
     try:
@@ -252,84 +344,117 @@ def run_test_suite(repo_name: str, test_path: str = "", timeout_seconds: int = 3
 
 PROTECTED_BRANCHES = {"main", "master"}
 
-# Единая постоянная ветка для ВСЕХ изменений от AI-команды — по запросу
-# Валика: раньше каждая задача создавала свою уникальную ветку
-# (ai-eng/<slug>-<timestamp>), из-за чего веток становилось много и
-# часть терялась из виду. Теперь ВСЁ уходит в одну и ту же ветку в
-# каждом репозитории (bld-system и bld-panel). Раньше отсюда Валик сам
-# смотрел и мержил в main вручную; теперь (см. merge_branch_to_main
-# ниже и workflows/engineering_task.py/squad_task.py) это делает Review
-# Gate автоматически при чистом вердикте — Валик из этой цепочки убран
-# полностью, разве что для инцидентов, где Review Gate сам не смог
-# домержить (конфликт) или дважды не пропустил код — тогда решение
-# уходит CTO, не основателю. create_branch() идемпотентна —
-# повторные вызовы просто переключаются на существующую ветку, не
-# создавая новую и не откатывая изменения.
+# ИСТОРИЯ: раньше здесь была ЕДИНАЯ постоянная ветка для всех задач
+# (AI_BRANCH_NAME = "bld-team-ai") — по прошлой просьбе Валика не
+# плодить много веток. Это работало, пока за раз в компании реально
+# что-то писал только один человек. С переходом на параллельные
+# индивидуальные инициативы (см. workflows/individual_initiative.py)
+# это стало физически несовместимо с "несколько человек пишут код в
+# один репозиторий одновременно": общая ветка = общая рабочая
+# директория = гонка. Вернули уникальную ветку на задачу (см.
+# slugify-генерацию в workflows/engineering_task.py), но проблему
+# "веток становится много", ради которой была сделана консолидация,
+# теперь решает автоматическая уборка: merge_branch_to_main удаляет
+# ветку (и локально, и в origin) и worktree сразу после успешного
+# мержа — то есть непрочитанных веток не копится, но не ценой отказа
+# от параллелизма. Имя оставлено как константа для обратной
+# совместимости импортов в других модулях, но больше не означает "одна
+# на всех" — это просто дефолтный fallback-префикс, реально не
+# используется напрямую в текущем потоке (см. branch_prefix в
+# run_engineering_task).
 AI_BRANCH_NAME = "bld-team-ai"
 
 
-def create_branch(repo_name: str, branch_name: str, base: str = "main") -> str:
-    """Создаёт новую ветку от base и переключается на неё. Использовать
-    один раз в начале инженерной задачи.
+def _worktree_dir_name(branch_name: str) -> str:
+    """Имя ветки может содержать '/' (например 'ai-eng/fix-l7') — как
+    путь к директории это не годится, заменяем на безопасный разделитель."""
+    return branch_name.replace("/", "__")
 
-    Идемпотентно: повторный вызов с тем же branch_name безопасен и не
-    откатывает репозиторий на base. Раньше повторный вызов (например, если
-    агент по ошибке зовёт create_branch дважды за одну задачу) сначала
-    переключал репо на base, а затем 'checkout -b' падал с 'branch already
-    exists' — в итоге репозиторий тихо оставался на base/main, и следующий
-    write_file упирался в защиту протектед-ветки, хотя по логам задача
-    была на нужной фиче-ветке.
+
+def create_branch(repo_name: str, branch_name: str, base: str = "main") -> str:
+    """Создаёт новую ветку от base в СОБСТВЕННОЙ изолированной git
+    worktree (не в общем клоне!) и делает её "текущей" для этой задачи
+    — все дальнейшие write_file/commit_and_push/run_test_suite/read-
+    инструменты этой же асинхронной задачи автоматически пойдут в неё
+    (см. _work_path/_ACTIVE_WORKTREE выше). Использовать один раз в
+    начале инженерной задачи.
+
+    Общий клон (WORKDIR/repo_name) при этом НИКОГДА не переключается на
+    другую ветку — он всегда остаётся на main. Это и есть та смена
+    архитектуры, которая делает несколько одновременных задач на одном
+    repo_name безопасными: раньше create_branch переключал ЕДИНУЮ
+    расшаренную директорию на другую ветку, и вторая параллельная
+    задача в этот момент читала/писала бы уже не то, что думает.
+
+    Идемпотентно: повторный вызов с тем же branch_name в рамках той же
+    задачи просто переиспользует уже созданную worktree, ничего не
+    трогая.
 
     Args:
         repo_name: 'bld-system' или 'bld-panel'.
         branch_name: имя новой ветки, например 'ai-eng/fix-l7-thresholds'.
         base: от какой ветки создавать (обычно 'main').
     """
-    path = _repo_path(repo_name)
+    shared_path = _repo_path(repo_name)
+    worktree_path = WORKTREES_DIR / repo_name / _worktree_dir_name(branch_name)
 
-    current = subprocess.run(
-        ["git", "-C", str(path), "branch", "--show-current"],
-        capture_output=True, text=True,
-    ).stdout.strip()
-    if current == branch_name:
-        return f"Уже на ветке {branch_name} — повторный create_branch пропущен, base не трогали."
+    if worktree_path.exists() and _get_active_worktree(repo_name) == worktree_path:
+        return f"Уже работаем в изолированной копии ветки {branch_name} — повторный create_branch пропущен."
 
-    subprocess.run(["git", "-C", str(path), "fetch", "origin", base], capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(path), "checkout", base], capture_output=True, text=True)
-    subprocess.run(["git", "-C", str(path), "pull", "--ff-only"], capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(shared_path), "fetch", "origin", base], capture_output=True, text=True)
+    WORKTREES_DIR.mkdir(parents=True, exist_ok=True)
+    # prune убирает "мёртвые" записи о worktree, чья директория на диске
+    # уже не существует (например, после сбойного предыдущего прогона)
+    # — без этого git иногда отказывается создавать worktree с тем же
+    # путём/веткой, думая, что он всё ещё занят.
+    subprocess.run(["git", "-C", str(shared_path), "worktree", "prune"], capture_output=True, text=True)
 
-    # Если ветка уже существует локально (например, задачу прервали и
-    # перезапустили) - переключаемся на неё, а не пытаемся создать заново.
-    exists = subprocess.run(
-        ["git", "-C", str(path), "rev-parse", "--verify", "--quiet", branch_name],
+    if worktree_path.exists():
+        # Директория уже есть на диске (задачу перезапустили в рамках
+        # того же checkout репозитория) — просто переиспользуем.
+        _set_active_worktree(repo_name, worktree_path)
+        return f"Изолированная копия ветки {branch_name} уже существует на диске — переиспользуем."
+
+    branch_exists = subprocess.run(
+        ["git", "-C", str(shared_path), "rev-parse", "--verify", "--quiet", branch_name],
         capture_output=True, text=True,
     ).returncode == 0
 
-    if exists:
+    if branch_exists:
         out = subprocess.run(
-            ["git", "-C", str(path), "checkout", branch_name],
+            ["git", "-C", str(shared_path), "worktree", "add", str(worktree_path), branch_name],
             capture_output=True, text=True,
         )
     else:
         out = subprocess.run(
-            ["git", "-C", str(path), "checkout", "-b", branch_name],
+            ["git", "-C", str(shared_path), "worktree", "add", "-b", branch_name,
+             str(worktree_path), f"origin/{base}"],
             capture_output=True, text=True,
         )
-    return out.stdout.strip() or out.stderr.strip() or f"Ветка {branch_name} создана и активна"
+
+    if out.returncode != 0:
+        return (
+            f"ОШИБКА: не удалось создать изолированную рабочую копию ветки {branch_name}: "
+            f"{out.stdout.strip() or out.stderr.strip()}"
+        )
+
+    _set_active_worktree(repo_name, worktree_path)
+    return out.stdout.strip() or out.stderr.strip() or f"Ветка {branch_name} создана в изолированной рабочей копии и активна"
 
 
 def write_file(repo_name: str, file_path: str, content: str) -> str:
     """Записывает содержимое в файл репозитория (создаёт файл и папки
     при необходимости) и добавляет его в git staging (git add).
-    Работает в ТЕКУЩЕЙ ветке — обязательно сначала вызови create_branch,
-    иначе рискуешь записать прямо в main.
+    Работает в изолированной рабочей копии ЭТОЙ задачи — обязательно
+    сначала вызови create_branch, иначе рискуешь записать прямо в main
+    (в общем клоне, который другие задачи читают параллельно).
 
     Args:
         repo_name: 'bld-system' или 'bld-panel'.
         file_path: путь к файлу относительно корня репозитория.
         content: полное новое содержимое файла.
     """
-    path = _repo_path(repo_name)
+    path = _work_path(repo_name)
 
     current_branch = subprocess.run(
         ["git", "-C", str(path), "branch", "--show-current"],
@@ -461,15 +586,26 @@ def commit_and_push(repo_name: str, branch_name: str, commit_message: str) -> st
 
 
 def merge_branch_to_main(repo_name: str, branch_name: str, summary: str = "") -> str:
-    """Мержит указанную ветку в main и пушит main в origin.
-    ОТКАЗЫВАЕТ, если branch_name сам по себе защищённая ветка (нет
-    смысла мержить main в main). При конфликте мержа ОТКАТЫВАЕТ мерж
-    (git merge --abort) и возвращает понятную ошибку — не оставляет
-    репозиторий в конфликтном состоянии на середине операции.
+    """Мержит указанную ветку в main и пушит main в origin, затем
+    убирает за собой: удаляет изолированную worktree-копию с диска и
+    саму ветку (локально и в origin). ОТКАЗЫВАЕТ, если branch_name сам
+    по себе защищённая ветка (нет смысла мержить main в main). При
+    конфликте мержа ОТКАТЫВАЕТ мерж (git merge --abort) и возвращает
+    понятную ошибку — не оставляет репозиторий в конфликтном состоянии
+    на середине операции (и НЕ убирает worktree/ветку в этом случае —
+    они остаются на диске/в origin для ручного разбора).
+
+    ВАЖНО: вызывающий код должен держать get_repo_write_lock(repo_name)
+    на время этого вызова (см. workflows/engineering_task.py,
+    workflows/squad_task.py) — это единственная операция во всей цепочке,
+    которая трогает общий клон (checkout main -> merge -> push), а не
+    изолированную per-task worktree, и поэтому единственная, где два
+    параллельных вызова реально могут столкнуться друг с другом.
 
     Args:
         repo_name: 'bld-system' или 'bld-panel'.
-        branch_name: ветка, которую мержим в main (обычно AI_BRANCH_NAME).
+        branch_name: ветка конкретной задачи, которую мержим в main
+            (см. branch_prefix/slugify в workflows/engineering_task.py).
         summary: короткое описание для сообщения мерж-коммита (например,
             исходная задача) — необязательно, но полезно для истории.
     """
@@ -501,6 +637,8 @@ def merge_branch_to_main(repo_name: str, branch_name: str, summary: str = "") ->
     if merge_out.returncode != 0:
         # Конфликт или другая ошибка мержа — откатываем, чтобы не
         # оставить репозиторий в conflicted-состоянии без присмотра.
+        # Worktree/ветку намеренно НЕ трогаем — конфликт нужно разобрать
+        # руками, глядя именно на эту ветку.
         subprocess.run(["git", "-C", str(path), "merge", "--abort"], capture_output=True, text=True)
         return (
             f"ОТКАЗ: мерж {branch_name} → main не прошёл (вероятен конфликт), "
@@ -516,4 +654,22 @@ def merge_branch_to_main(repo_name: str, branch_name: str, summary: str = "") ->
             "разобраться руками, прежде чем что-то ещё пушить в main."
         )
 
-    return f"✅ {branch_name} смержен в main и запушен в origin.\n{merge_out.stdout.strip()}"
+    # Успех — подчищаем worktree и ветку, чтобы они не копились (это и
+    # есть ответ на прошлое "не хочу, чтобы веток становилось много" —
+    # см. коммент у AI_BRANCH_NAME выше). Любая ошибка здесь не критична
+    # (main уже смержен и запушен — самое важное уже сделано) и не
+    # должна маскировать успешный мерж как отказ.
+    worktree_path = _get_active_worktree(repo_name)
+    cleanup_note = ""
+    if worktree_path is not None:
+        wt_out = subprocess.run(
+            ["git", "-C", str(path), "worktree", "remove", "--force", str(worktree_path)],
+            capture_output=True, text=True,
+        )
+        if wt_out.returncode != 0:
+            cleanup_note += f"\n(worktree не удалилась начисто, не критично: {wt_out.stderr.strip()})"
+    subprocess.run(["git", "-C", str(path), "branch", "-D", branch_name], capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(path), "push", "origin", "--delete", branch_name], capture_output=True, text=True)
+    _set_active_worktree(repo_name, None)
+
+    return f"✅ {branch_name} смержен в main и запушен в origin. Ветка и рабочая копия подчищены.{cleanup_note}\n{merge_out.stdout.strip()}"
