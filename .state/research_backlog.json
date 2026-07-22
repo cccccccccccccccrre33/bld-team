@@ -1,5 +1,21 @@
 [
   {
+    "id": "rb_2026072213435682",
+    "area": "архитектура",
+    "topic": "Смотрел сейчас на `anomaly/engine.py` — там до сих пор каждый уровень аномалий д",
+    "summary": ": \"Yes, that’s a natural transformation from a shared context; we could implement a ProjectSnapshot dataclass that’s assembled once and passed down. Not only simplifies multi-region but also reduces DB load and makes testing easier.\" That's enough.\n\nLet's craft a reply.</think>Yes, that's a natural transformation from a shared context; we could implement a ProjectSnapshot dataclass assembled once and passed down. Not only simplifies eventual multi-region but also reduces DB load and eases testing. As a categorical pattern, it's about ensuring all morphisms operate on the same pullback of data.",
+    "origin": "company_pulse",
+    "participants": [
+      "distributed_consensus_architect",
+      "sorbonne_puremath"
+    ],
+    "status": "open",
+    "created": "22.07.2026 13:43",
+    "last_touched": "22.07.2026 13:43",
+    "revisit_count": 0,
+    "history": []
+  },
+  {
     "id": "rb_2026072211494353",
     "area": "физика",
     "topic": "Слушай, вот что меня засело. У нас уже есть девятуровневый anomaly engine, котор",
