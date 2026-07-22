@@ -503,6 +503,17 @@
       "created": "22.07.2026 07:45",
       "updated": "22.07.2026 07:45",
       "cto_comment": "Да, это чинить надо: сейчас код реально захардкожен на `uq_balance_material` в `ai/processor.py`, а в схеме уже живут другие partial unique indexes (`...identity_project` / `...identity_section`), то есть rename/миграция действительно ломают upsert без изменения бизнес-логики. Но это не надо делать параллельно двумя отрядами: на доске уже есть тот же самый таск у `[alpha]`, так что approval даю только как одну объединённую задачу с одним владельцем, без дублирования работы."
+    },
+    {
+      "id": "bravo-20260722074530",
+      "title": "Убрать тестовые “слабые” пароли из bld-system tests (заменить на генерируемые/валидные фикстуры)",
+      "squad": "bravo",
+      "status": "proposed",
+      "reason": "В репозитории bld-system в тестах захардкожены пароли вроде `super-secret`, `password`, `testpassword1` (см. `tests/test_admin_bootstrap_startup.py`, `tests/test_admin_bootstrap_use_case.py`, `tests/test_owner_activation_foundation.py`). Это создаёт риск случайного переиспользования в dev/stage, утечек через логи/артефакты CI и закрепляет небезопасные паттерны в кодовой базе.",
+      "how": "Вынести генератор пароля в общую фикстуру (например, `tests/conftest.py`) с явными требованиями (длина/класс символов) и заменить все литералы паролей на вызов фикстуры. Добавить простой чек в CI (grep/pytest-check) на появление запрещённых паролей-литералов (`\"password\"`, `\"super-secret\"`, `\"testpassword\"`) в `tests/`.",
+      "created": "22.07.2026 07:45",
+      "updated": "22.07.2026 07:45",
+      "cto_comment": ""
     }
   ],
   "last_updated": "22.07.2026 07:45"
