@@ -530,12 +530,12 @@
       "id": "pulse:shenzhen_fintech-20260722095833",
       "title": "Найти и задокументировать в коде точку/условия в `normalize_precision_deviation_response`, где должны отфильтровываться internal dry-run сигналы, и при необходимости внести правку, чтобы они гарантированно не попадали в owner-safe payload (в потоке RawMessage → WorkingFact) при параллельном существовании dual-path со старыми `ConstructionEvent`.",
       "squad": "pulse:shenzhen_fintech",
-      "status": "in_progress",
+      "status": "timed_out",
       "reason": "Это не дублирует текущие задачи на доске и это не “приятно иметь”: инвариант owner-safe boundary у нас критический, а в коде `normalize_precision_deviation_response` уже является явной точкой нормализации перед клиентскими surface’ами. Я проверил код: фильтрация internal/dry-run реально завязана на `strip_internal_fields()` в `risk/precision_deviation_response_normalizer.py`, плюс есть owner-facing вызовы через `build_owner_insights_payload`, так что задача реалистична — нужно не “изобретать подход”, а формально задокументировать boundary и при необходимости добить тестом dual-path leakage со старыми `ConstructionEvent` и новым потоком.",
       "how": "",
       "created": "22.07.2026 09:58",
-      "updated": "22.07.2026 09:58",
-      "cto_comment": ""
+      "updated": "22.07.2026 13:53",
+      "cto_comment": "[Авто-разморозка 22.07.2026 13:53: висела в 'in_progress' дольше 2ч без изменений — похоже, выполнявший процесс оборвался (обычно это GitHub Actions убивает job по timeout-minutes), а не что кто-то отклонил задачу по существу. Слот освобождён. Если задача про реальный код (in_progress) — ветка могла остаться в частично изменённом состоянии, стоит проверить репозиторий вручную, прежде чем переоткрывать тему заново.]"
     },
     {
       "id": "gtm-20260722105733",
@@ -560,5 +560,5 @@
       "cto_comment": ""
     }
   ],
-  "last_updated": "22.07.2026 12:31"
+  "last_updated": "22.07.2026 13:53"
 }
