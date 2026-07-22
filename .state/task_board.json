@@ -492,7 +492,18 @@
       "created": "22.07.2026 07:44",
       "updated": "22.07.2026 07:44",
       "cto_comment": ""
+    },
+    {
+      "id": "platform-20260722074513",
+      "title": "Удалить хардкод `ON CONFLICT ON CONSTRAINT uq_balance_material` в `bld-system/ai/processor.py` и тесте `tests/test_processor.py`, перейти на `ON CONFLICT (…колонки identity key…)`",
+      "squad": "platform",
+      "status": "proposed",
+      "reason": "Сейчас upsert завязан на имя конкретного Postgres-constraint (`uq_balance_material`) в двух местах `ai/processor.py` (строки ~2916, ~2935) и закреплён тестом. Любой rename/пересоздание constraint при миграциях сломает запись в БД и CI, хотя логика конфликта по колонкам останется валидной.",
+      "how": "Определить актуальный набор колонок, образующих identity key для `balance_material`, и заменить SQL на `ON CONFLICT (col1, col2, ...) DO UPDATE ...`. Обновить `tests/test_processor.py`, чтобы проверять новый паттерн `ON CONFLICT (` вместо конкретного имени constraint; прогнать тесты и локально подтвердить upsert на реальной схеме.",
+      "created": "22.07.2026 07:45",
+      "updated": "22.07.2026 07:45",
+      "cto_comment": ""
     }
   ],
-  "last_updated": "22.07.2026 07:44"
+  "last_updated": "22.07.2026 07:45"
 }
