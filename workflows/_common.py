@@ -389,3 +389,253 @@ read_file, git_log, git_diff, grep_repo) — используй их, ЕСЛИ �
 
 
 async def compile_brief(full_report: str, header_emoji: str = "🏁", context_hint: str = "") -> str:
+    """Сжимает ЛЮБОЙ подробный отчёт (техническая работа, заседание,
+    лаборатория, хеврута и т.д.) в короткий, в духе того, как кто-то
+    кратко резюмирует на созвоне — не бюрократический документ с
+    разделами, а 4-6 строк по существу. Полная версия всё равно уходит
+    в вики через curate_knowledge — здесь только то, что летит в
+    Telegram, а Валик не должен продираться через простыню текста,
+    чтобы понять, что вообще произошло и что теперь происходит.
+
+    context_hint — необязательная подсказка модели, что это за отчёт
+    (например 'заседание совета', 'инженерная задача') — помогает
+    сжать уместно, без натягивания чужого формата."""
+    from config.client_factory import get_chat_client
+    from config.models import GROWTH_MODEL_ASSIGNMENTS
+
+    client = get_chat_client(GROWTH_MODEL_ASSIGNMENTS.get("mlops_engineer", "gpt-5.4"))
+    hint_line = f" ({context_hint})" if context_hint else ""
+    prompt = f"""
+Вот подробный отчёт{hint_line}:
+
+{full_report}
+
+Сожми его до короткого сообщения в Telegram — МАКСИМУМ 4-6 строк,
+без markdown-звёздочек, без заголовков-разделов, без бюрократии.
+Обязательно и только по существу:
+
+1. Главное — что решили / что сделано / к чему пришли (1-2 строки).
+2. Что происходит дальше — конкретный следующий шаг, если он есть
+   (например: реализуется, отклонено, ушло на доработку, статус мержа
+   в main). Если ничего дальше не происходит — так и напиши одной
+   короткой фразой, не придумывай значимость.
+
+Если в исходном отчёте был технический review/мерж в код — статус
+(одобрено/были замечания/мерж прошёл) уместится в тот же пункт "что
+дальше", отдельного раздела под это не делай.
+"""
+    return await ask(client, prompt)
+
+
+async def curate_knowledge(source_label: str, content: str) -> None:
+    """Knowledge Curator — редкий гибрид: инженер, который добровольно
+    ведёт вики компании. После каждого значимого события (заседание,
+    инженерная задача, лаборатория) добавляет ОДНУ короткую запись в
+    постоянную базу знаний (.state/company_wiki.md) — что решено и
+    почему, без пересказа всей дискуссии. Дешёвая модель, чистая
+    суммаризация — цель не решать, а фиксировать уже решённое, чтобы
+    через полгода можно было понять, почему систему сделали именно так.
+
+    Как и save_topic(), коммитит файл обратно в репозиторий bld-team.
+    Если коммит/пуш не удался — печатает предупреждение, не падает.
+    """
+    from config.client_factory import get_chat_client
+    from config.models import KNOWLEDGE_CURATOR_MODEL
+
+    client = get_chat_client(KNOWLEDGE_CURATOR_MODEL)
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    prompt = f"""
+Вот результат события "{source_label}" от {now}:
+
+{content}
+
+Составь ОДНУ короткую запись для постоянной базы знаний компании —
+markdown, 3-5 строк, без вступлений и воды. Формат СТРОГО такой:
+
+### {source_label} — {now}
+- Решение/находка: [одна строка по существу]
+- Причина: [одна строка — почему именно так]
+- Открытый вопрос/риск: [одна строка, если есть; если нет — не пиши эту строку вообще]
+"""
+    entry = await ask(client, prompt)
+
+    STATE_DIR.mkdir(exist_ok=True)
+    wiki_path = STATE_DIR / "company_wiki.md"
+    existing = wiki_path.read_text(encoding="utf-8") if wiki_path.exists() else "# Вики компании BLD\n"
+    wiki_path.write_text(existing.rstrip() + "\n\n" + entry.strip() + "\n", encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(wiki_path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"docs: вики — {source_label}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[knowledge curator] Не удалось сохранить вики в git: {e}")
+
+
+# --- Личный дневник (для молодых специалистов, agents/global_geniuses.py
+# и agents/expansion_geniuses.py) — .state/notebooks/{name}.json.
+#
+# Идея: "студенческая погружённость" — человек не просто раз в
+# несколько дней случайно всплывает с идеей, а ведёт непрерывную нить
+# любопытства, которую сам же читает в начале следующей сессии ("в
+# прошлый раз я копал в сторону X, продолжу оттуда"). Даже если сессия
+# не привела к конкретному предложению — запись всё равно делается
+# ("посмотрел туда-то, пока не нашёл ничего конкретного, но кажется
+# перспективным X") — именно это и создаёт ощущение постоянной
+# вовлечённости, а не серии несвязанных случайных вспышек.
+
+NOTEBOOKS_DIR = STATE_DIR / "notebooks"
+
+
+def load_notebook(name: str, limit: int = 5) -> list[dict]:
+    """Последние записи личного дневника человека. Пустой список, если
+    дневника ещё нет (первая сессия)."""
+    path = NOTEBOOKS_DIR / f"{name}.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data[-limit:]
+    except Exception:
+        return []
+
+
+def format_notebook(entries: list[dict]) -> str:
+    if not entries:
+        return "(это твоя первая запись в личном дневнике — начинай с чистого листа)"
+    return "\n".join(f"[{e['date']}] {e['entry']}" for e in entries)
+
+
+def save_notebook_entry(name: str, entry: str) -> None:
+    """Дописывает запись в личный дневник и коммитит в репозиторий
+    bld-team — тот же паттерн, что и вики/доска задач."""
+    NOTEBOOKS_DIR.mkdir(parents=True, exist_ok=True)
+    path = NOTEBOOKS_DIR / f"{name}.json"
+    entries = []
+    if path.exists():
+        try:
+            entries = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            entries = []
+    entries.append({"date": datetime.now().strftime("%d.%m %H:%M"), "entry": entry})
+    entries = entries[-40:]  # не растим бесконечно
+    path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(path)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", f"chore: дневник — {name}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[notebook] Не удалось сохранить дневник {name} в git: {e}")
+
+
+# --- Справедливое участие — .state/participation.json ---
+#
+# Раньше каждый механизм (Company Pulse, Chevruta, Individual
+# Initiative, Лаборатория, HR) выбирал людей ЧИСТО случайно и
+# независимо друг от друга. На практике за день это давало заметный
+# перекос: кто-то попадался несколько раз, кто-то — ни разу, просто по
+# случайности. Единый трекер участия (общий для ВСЕХ механизмов —
+# ключ по имени, а не по механизму) позволяет каждому пикеру слегка
+# смещать вероятность в пользу тех, кто дольше всех молчал — без
+# жёсткой детерминированной очереди (это выглядело бы механически),
+# просто честный наклон вероятности.
+
+PARTICIPATION_PATH = STATE_DIR / "participation.json"
+
+
+def _load_participation() -> dict:
+    if not PARTICIPATION_PATH.exists():
+        return {}
+    try:
+        return json.loads(PARTICIPATION_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def record_participation(*names: str) -> None:
+    """Отмечает, что эти люди только что где-то поучаствовали (сказали
+    реплику, взяли инициативу и т.п.) — вызывается из ЛЮБОГО механизма
+    (Pulse/Chevruta/Individual Initiative/Lab/HR), не только из одного
+    места, чтобы трекер был честным по всей компании сразу."""
+    data = _load_participation()
+    now = datetime.now().isoformat()
+    for name in names:
+        data[name] = now
+    STATE_DIR.mkdir(exist_ok=True)
+    PARTICIPATION_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        subprocess.run(["git", "config", "user.name", "bld-team-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "bld-team-bot@users.noreply.github.com"], check=True)
+        subprocess.run(["git", "add", str(PARTICIPATION_PATH)], check=True)
+        result = subprocess.run(
+            ["git", "commit", "-m", "chore: участие — обновлён трекер"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["git", "push"], check=True)
+    except Exception as e:
+        print(f"[participation] Не удалось сохранить трекер в git: {e}")
+
+
+def fair_sample(pool: list[str], k: int = 1, fairness: float = 0.6) -> list[str]:
+    """Выбирает k человек из pool со смещением в пользу тех, кто дольше
+    всех не участвовал НИГДЕ в компании (по общему трекеру). Не жёсткая
+    очередь — fairness (0..1) задаёт силу смещения: 0 = чистая
+    случайность, 1 = почти детерминированная ротация по давности.
+    По умолчанию 0.6 — заметный наклон, но не механический.
+
+    Люди, которых ещё вообще не было в трекере (никогда не участвовали),
+    получают максимальный приоритет — как самые "давно молчавшие"."""
+    import random as _random
+
+    data = _load_participation()
+    now = datetime.now()
+
+    def staleness(name: str) -> float:
+        ts = data.get(name)
+        if not ts:
+            return 1e9  # никогда не участвовал — максимальный приоритет
+        try:
+            last = datetime.fromisoformat(ts)
+            return (now - last).total_seconds()
+        except Exception:
+            return 1e9
+
+    staleness_values = {n: staleness(n) for n in pool}
+    max_stale = max(staleness_values.values()) or 1.0
+
+    weights = []
+    for n in pool:
+        fairness_weight = staleness_values[n] / max_stale  # 0..1, больше = давно не участвовал
+        random_weight = _random.random()
+        weights.append(fairness * fairness_weight + (1 - fairness) * random_weight + 0.01)
+
+    k = min(k, len(pool))
+    chosen: list[str] = []
+    remaining = list(pool)
+    remaining_weights = list(weights)
+    for _ in range(k):
+        total = sum(remaining_weights)
+        r = _random.uniform(0, total)
+        upto = 0.0
+        for i, w in enumerate(remaining_weights):
+            upto += w
+            if upto >= r:
+                chosen.append(remaining.pop(i))
+                remaining_weights.pop(i)
+                break
+    return chosen
