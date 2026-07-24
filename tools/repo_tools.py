@@ -132,8 +132,11 @@ REPOS = (
     _parse_target_repos(_TARGET_REPOS_RAW)
     if _TARGET_REPOS_RAW
     else {
-        "bld-system": "github.com/cccccccccccccccrre33/bld-system.git",
-        "bld-panel": "github.com/cccccccccccccccrre33/bld-panel.git",
+        # Дефолт для тех, кто ничего не настроил в TARGET_REPOS: ai-team
+        # обсуждает собственный код. Публичный репозиторий, не требует
+        # GITHUB_TOKEN, работает сразу после `pip install` — честное демо
+        # без привязки к чьему-либо приватному проекту.
+        "ai-team": "github.com/cccccccccccccccrre33/bld-team.git",
     }
 )
 
