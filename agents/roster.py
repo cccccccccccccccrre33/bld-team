@@ -25,6 +25,7 @@ from agents.squads import (
     build_squad_lead_product,
 )
 from agents.team import build_team
+from agents.custom_agents import disabled_roles, load_custom_agents
 
 CODE_ACCESS_ROLES = {
     "mekhmat", "fiztech", "fizmat", "tehmat", "chief_scientist", "ceo",
@@ -68,4 +69,12 @@ def build_full_roster() -> dict:
     roster["squad_lead_platform"] = build_squad_lead_platform()
     roster["squad_lead_product"] = build_squad_lead_product()
     roster["gtm_lead"] = build_gtm_lead()
+
+    # Кастомные агенты пользователя (config/custom_agents.yaml) — та же
+    # логика "добавить кого хочешь без правки кода", что и в team.py.
+    roster.update(load_custom_agents())
+
+    disabled = disabled_roles()
+    if disabled:
+        roster = {k: v for k, v in roster.items() if k not in disabled}
     return roster
