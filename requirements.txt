@@ -3,6 +3,13 @@
 # "agent-framework-azure" на PyPI НЕ нужен, это другой (зарезервированный,
 # пустой) пакет, легко перепутать по названию.
 agent-framework>=1.10.0,<2.0.0
+# azure-identity нужен ТОЛЬКО для MODEL_PROVIDER=azure_foundry (см.
+# config/client_factory.py) — при дефолтном MODEL_PROVIDER=openai не
+# используется вообще, но остаётся в зависимостях, чтобы import не падал,
+# если кто-то переключится на Azure позже.
 azure-identity
 python-dotenv
 requests
+# Для config/custom_agents.yaml — добавление участников дискуссии без
+# правки Python-кода (см. agents/custom_agents.py).
+pyyaml
