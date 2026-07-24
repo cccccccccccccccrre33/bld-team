@@ -1,13 +1,16 @@
 """
 Главный сценарий:
 
-1. clone_or_update_repos() — синхронизируем оба репо локально.
-2. Topic Scout (на code-модели) смотрит git_log обоих репозиториев,
+1. clone_or_update_repos() — синхронизируем все репозитории из
+   TARGET_REPOS локально (см. tools/repo_tools.py; по умолчанию — репо
+   автора этого форка, если TARGET_REPOS не задан).
+2. Topic Scout (на code-модели) смотрит git_log всех репозиториев,
    выбирает последний содержательный коммит/изменение и формулирует
    ОДИН конкретный спорный вопрос для команды (не "обсудите проект",
-   а "вот это изменение в L7 — это решение или забытый баг?").
-3. Запускается GroupChat: CTO, Backend Senior, Product/Frontend,
-   QA/Security обсуждают этот вопрос. Модератор (отдельный Agent)
+   а "вот это изменение — это решение или забытый баг?").
+3. Запускается GroupChat: вся команда (встроенная четвёрка минус
+   DISABLE_ROLES, плюс всё из config/custom_agents.yaml — см.
+   agents/team.py) обсуждает этот вопрос. Модератор (отдельный Agent)
    решает, кто говорит следующим — без жёсткого round-robin,
    ориентируясь на то, кто реально хочет/должен ответить дальше.
 4. Дискуссия останавливается по term. условию (число сообщений)
@@ -22,7 +25,7 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import MODEL_ASSIGNMENTS
-from tools.repo_tools import git_log
+from tools.repo_tools import REPOS, git_log
 from workflows._common import ask, extract_messages, sync_repos_or_alert
 
 MAX_MESSAGES = 24  # защита от бесконечного спора / траты кредитов
@@ -30,29 +33,28 @@ MAX_MESSAGES = 24  # защита от бесконечного спора / т�
 
 async def find_discussion_topic() -> str:
     """Отдельный лёгкий вызов модели (не входит в группу), который
-    смотрит git log обоих репозиториев и формулирует один конкретный
-    вопрос для обсуждения командой."""
+    смотрит git log всех целевых репозиториев (TARGET_REPOS, см.
+    tools/repo_tools.py) и формулирует один конкретный вопрос для
+    обсуждения командой."""
     scout_client = get_chat_client(MODEL_ASSIGNMENTS["code_scout"])
 
-    bld_system_log = git_log("bld-system", limit=15)
-    bld_panel_log = git_log("bld-panel", limit=15)
+    logs = "\n\n".join(
+        f"=== {name} ===\n{git_log(name, limit=15)}" for name in REPOS
+    )
+    repo_names = ", ".join(REPOS)
 
     prompt = f"""
-Вот последние коммиты в двух репозиториях проекта BLD System.
+Вот последние коммиты в репозитории проекта ({repo_names}).
 
-=== bld-system ===
-{bld_system_log}
-
-=== bld-panel ===
-{bld_panel_log}
+{logs}
 
 Выбери ОДИН коммит или одно изменение, которое выглядит спорным,
 рискованным, недоделанным или интересным с архитектурной/продуктовой
 точки зрения. Сформулируй ОДНО конкретное предложение-вопрос для
-обсуждения командой (CTO, Backend Senior, Product/Frontend, QA/Security).
+обсуждения командой.
 
 Вопрос должен быть конкретным и привязанным к репозиторию и коммиту,
-например: "В bld-system, коммит abc123 меняет логику L7 — это
+например: "В {next(iter(REPOS))}, коммит abc123 меняет логику X — это
 осознанное решение или забытый edge-case? Нужно обсудить."
 
 Ответь ТОЛЬКО самим вопросом, без преамбулы.
@@ -63,13 +65,13 @@ async def find_discussion_topic() -> str:
 def build_discussion_workflow(team: dict):
     """Собирает GroupChat workflow с модератором-агентом."""
     moderator_client = get_chat_client(MODEL_ASSIGNMENTS["moderator"])
+    participants = ", ".join(team.keys())
     moderator_agent = moderator_client.as_agent(
         name="moderator",
-        instructions="""
+        instructions=f"""
 Ты — модератор технического обсуждения. У тебя НЕТ своего мнения
 о проекте, твоя единственная задача — после каждого сообщения решать,
-кто из участников (cto, backend_senior, product_frontend, qa_security)
-должен ответить следующим.
+кто из участников ({participants}) должен ответить следующим.
 
 Правила выбора:
 - Если кого-то явно упомянули по имени или роли — выбирай его.
