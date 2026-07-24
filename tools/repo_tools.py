@@ -99,10 +99,43 @@ def _get_active_worktree(repo_name: str):
 
 WORKTREES_DIR = WORKDIR / "_worktrees"
 
-REPOS = {
-    "bld-system": "github.com/cccccccccccccccrre33/bld-system.git",
-    "bld-panel": "github.com/cccccccccccccccrre33/bld-panel.git",
-}
+# Репозитории, которые наблюдает и обсуждает AI-команда — настраивается
+# через TARGET_REPOS в .env, БЕЗ изменения кода. Формат:
+#   TARGET_REPOS=имя1=github.com/владелец/репо1.git,имя2=github.com/владелец/репо2.git
+# "Имя" — произвольный короткий идентификатор (используется как ключ
+# repo_name везде в этом файле и как имя папки в ./repos). Можно указать
+# один репозиторий или сколько угодно.
+#
+# Если TARGET_REPOS не задан — используются репозитории автора этого
+# форка (bld-system/bld-panel), чтобы существующий деплой не сломался.
+
+
+def _parse_target_repos(raw: str) -> dict:
+    repos = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(
+                f"Неверный формат TARGET_REPOS: '{pair}'. "
+                "Ожидается 'имя=github.com/владелец/репо.git' "
+                "через запятую для нескольких репозиториев."
+            )
+        name, _, url = pair.partition("=")
+        repos[name.strip()] = url.strip()
+    return repos
+
+
+_TARGET_REPOS_RAW = os.getenv("TARGET_REPOS", "").strip()
+REPOS = (
+    _parse_target_repos(_TARGET_REPOS_RAW)
+    if _TARGET_REPOS_RAW
+    else {
+        "bld-system": "github.com/cccccccccccccccrre33/bld-system.git",
+        "bld-panel": "github.com/cccccccccccccccrre33/bld-panel.git",
+    }
+)
 
 # Расширения, которые реально стоит отдавать модели как текст.
 # Бинарники, lock-файлы и node_modules/venv агентам ни к чему.
@@ -146,14 +179,15 @@ def clone_or_update_repos() -> str:
     продолжалась как ни в чём не бывало — из-за этого агенты получали
     рабочую директорию без репозитория и не понимали, что происходит.
     """
-    if not GITHUB_TOKEN:
-        raise RuntimeError("GITHUB_TOKEN не задан в окружении.")
+    # GITHUB_TOKEN нужен только для приватных репозиториев. Если целевой
+    # проект публичный (обычный случай для форка этого проекта на чужом
+    # open-source коде) — клонирование по https и без токена работает.
     WORKDIR.mkdir(parents=True, exist_ok=True)
     results = []
     failures = []
     for name, repo_url in REPOS.items():
         path = WORKDIR / name
-        auth_url = f"https://{GITHUB_TOKEN}@{repo_url}"
+        auth_url = f"https://{GITHUB_TOKEN}@{repo_url}" if GITHUB_TOKEN else f"https://{repo_url}"
         if path.exists():
             out = subprocess.run(
                 ["git", "-C", str(path), "pull", "--ff-only"],
@@ -175,10 +209,12 @@ def clone_or_update_repos() -> str:
     if failures:
         raise RepoSyncError(
             summary
-            + "\n\nПроверь: 1) репозиторий существует под этим именем на GitHub; "
-              "2) GITHUB_TOKEN/BLD_REPOS_PAT имеет доступ именно к этому репо "
-              "(для fine-grained PAT — он должен быть явно выбран в списке "
-              "разрешённых репозиториев, а не просто 'Contents: Read/Write')."
+            + "\n\nПроверь: 1) URL в TARGET_REPOS правильный и репозиторий "
+              "существует; 2) если репозиторий приватный — GITHUB_TOKEN "
+              "задан и имеет доступ именно к нему (для fine-grained PAT — "
+              "он должен быть явно выбран в списке разрешённых "
+              "репозиториев, а не просто 'Contents: Read/Write'). Для "
+              "публичных репозиториев GITHUB_TOKEN не нужен."
         )
     return summary
 
