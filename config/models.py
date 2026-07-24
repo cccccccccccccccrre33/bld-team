@@ -67,9 +67,36 @@ gpt-5.6-terra ТОЖЕ БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ НИГДЕ (п
 
 Если задеплоишь другие названия — задай через переменные окружения
 (см. .env.example), дефолты ниже менять не обязательно.
+
+--- Про MODEL_PROVIDER (см. config/client_factory.py) ---
+Дефолты для основной четвёрки + moderator/code_scout + office_chat
+(они нужны для `python main.py` и офисного чата "из коробки") —
+провайдер-зависимые: под MODEL_PROVIDER=openai (дефолт для форка) они
+дешёвые OpenAI-модели напрямую (gpt-5.4-mini/nano), под
+MODEL_PROVIDER=azure_foundry — как раньше, Azure deployment names.
+Остальные ~200 ролей (совет директоров, правление, global elite,
+экспансия и т.д.) остались как есть — набор конкретных Azure/сторонних
+deployment names автора этого форка. Если запускаешь эти расширенные
+режимы на MODEL_PROVIDER=openai — переопредели нужные тебе роли через
+MODEL_XXX в .env (имена деплойментов вроде "DeepSeek-V4-Pro" на обычном
+OpenAI API не существуют).
 """
 
 import os
+
+# Провайдер моделей — см. config/client_factory.py. "openai" (дефолт)
+# работает с любым OpenAI-совместимым API и не требует Azure вообще.
+_PROVIDER = os.getenv("MODEL_PROVIDER", "openai").strip().lower()
+
+
+def _tiered_default(azure_value: str, openai_value: str) -> str:
+    """Дефолт модели, зависящий от MODEL_PROVIDER — так дефолты для
+    Azure-деплойментов (имена вида 'gpt-5.4') и для обычного OpenAI API
+    (те же имена моделей, но там это реальные имена моделей, а не
+    произвольные deployment name) не путаются друг с другом. Всегда
+    можно переопределить через конкретную MODEL_XXX переменную,
+    независимо от провайдера."""
+    return openai_value if _PROVIDER == "openai" else azure_value
 
 
 def _env(key: str, default: str) -> str:
@@ -91,23 +118,30 @@ def _env(key: str, default: str) -> str:
 
 MODEL_ASSIGNMENTS = {
     # Архитектура, риски, приоритеты, технический долг
-    "cto": _env("MODEL_CTO", "gpt-5.4"),
+    "cto": _env("MODEL_CTO", _tiered_default("gpt-5.4", "gpt-5.4-mini")),
 
     # Дотошный сильный синьор-бэкендер
-    "backend_senior": _env("MODEL_BACKEND", "gpt-5.4"),
+    "backend_senior": _env("MODEL_BACKEND", _tiered_default("gpt-5.4", "gpt-5.4-mini")),
 
     # Продукт / фронт / UX — не нужна максимальная глубина
-    "product_frontend": _env("MODEL_PRODUCT", "gpt-5.4-nano"),
+    "product_frontend": _env("MODEL_PRODUCT", _tiered_default("gpt-5.4-nano", "gpt-5.4-nano")),
 
     # QA / Security — параноик, ищет edge-cases
-    "qa_security": _env("MODEL_QA", "gpt-5.4"),
+    "qa_security": _env("MODEL_QA", _tiered_default("gpt-5.4", "gpt-5.4-mini")),
 
     # Не участник дискуссии — "руки", читающие репозиторий.
-    "code_scout": _env("MODEL_CODE_SCOUT", "gpt-5.2"),
+    "code_scout": _env("MODEL_CODE_SCOUT", _tiered_default("gpt-5.2", "gpt-5.4-mini")),
 
     # Модератор GroupChat — чисто роутинг, дешёвая модель.
     "moderator": _env("MODEL_MODERATOR", "gpt-5.4-nano"),
 }
+
+# Эти 4 роли + модератор + code_scout — единственные, которые реально
+# нужны для дефолтного `python main.py`. Дефолты выше нарочно дешёвые
+# (mini/nano) — цель форка "работает из коробки почти бесплатно", а не
+# максимальное качество спора. Подними любую роль до топовой модели
+# через свою MODEL_XXX переменную в .env, когда логика обсуждения тебя
+# устроит и захочется больше глубины (см. README).
 
 # Эндпоинт Azure AI Foundry (project endpoint, не resource endpoint!)
 FOUNDRY_PROJECT_ENDPOINT = _env("FOUNDRY_PROJECT_ENDPOINT", "")
@@ -115,13 +149,13 @@ FOUNDRY_PROJECT_ENDPOINT = _env("FOUNDRY_PROJECT_ENDPOINT", "")
 # --- Офисные посиделки (agents/office_chat.py, workflows/office_chat.py) ---
 # Неформальный чат — самая дешёвая ветка, тут не нужна глубина.
 OFFICE_MODEL_ASSIGNMENTS = {
-    "cto": _env("MODEL_OFFICE_CTO", "gpt-5.4-mini"),
-    "backend_senior": _env("MODEL_OFFICE_BACKEND", "gpt-5.4-mini"),
-    "product_frontend": _env("MODEL_OFFICE_PRODUCT", "gpt-5.4-mini"),
-    "qa_security": _env("MODEL_OFFICE_QA", "gpt-5.4-mini"),
+    "cto": _env("MODEL_OFFICE_CTO", "gpt-5.4-nano" if _PROVIDER == "openai" else "gpt-5.4-mini"),
+    "backend_senior": _env("MODEL_OFFICE_BACKEND", "gpt-5.4-nano" if _PROVIDER == "openai" else "gpt-5.4-mini"),
+    "product_frontend": _env("MODEL_OFFICE_PRODUCT", "gpt-5.4-nano" if _PROVIDER == "openai" else "gpt-5.4-mini"),
+    "qa_security": _env("MODEL_OFFICE_QA", "gpt-5.4-nano" if _PROVIDER == "openai" else "gpt-5.4-mini"),
     "moderator": _env("MODEL_OFFICE_MODERATOR", "gpt-5.4-nano"),
     # "Искра" реально копается в коде через tools — нужна модель получше
-    "spark": _env("MODEL_OFFICE_SPARK", "gpt-5.2"),
+    "spark": _env("MODEL_OFFICE_SPARK", _tiered_default("gpt-5.2", "gpt-5.4-mini")),
 }
 
 # --- Совет директоров (agents/board.py, workflows/board_meeting.py) ---
