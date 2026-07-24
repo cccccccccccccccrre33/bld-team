@@ -59,10 +59,15 @@ def load_bld_scope_context() -> str:
             result.append(line)
 
     scoped = "\n".join(result)
+    try:
+        from tools.repo_tools import REPOS
+        repo_list = ", ".join(REPOS.keys())
+    except Exception:  # noqa: BLE001 — не блокируем контекст из-за деталей репо-конфига
+        repo_list = "(см. TARGET_REPOS)"
     scope_note = (
-        "\n> Примечание: ты работаешь СТРОГО в рамках BLD System "
-        "(репозитории bld-system и bld-panel). Другие проекты "
-        "компании (если такие есть) — не твоя зона ответственности "
+        f"\n> Примечание: ты работаешь СТРОГО в рамках проекта, "
+        f"который наблюдает эта AI-команда (репозитории: {repo_list}). "
+        "Другие проекты (если такие есть) — не твоя зона ответственности "
         "и не должны фигурировать в твоих задачах и рекомендациях.\n"
     )
     return scope_note + scoped
