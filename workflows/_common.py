@@ -221,11 +221,16 @@ async def sync_repos_or_alert() -> bool:
     Возвращает True, если можно продолжать, False - если нужно прервать
     workflow прямо здесь (вызывающий код должен сделать `return`).
     """
-    from tools.repo_tools import clone_or_update_repos, RepoSyncError
+    from tools.repo_tools import REPOS, WORKDIR, clone_or_update_repos, RepoSyncError
     from tools.telegram_report import send_telegram_report
 
     try:
         print(clone_or_update_repos())
+        try:
+            from tools.context_builder import ensure_company_context
+            ensure_company_context(REPOS, WORKDIR)
+        except Exception as e:  # noqa: BLE001 — контекст опционален, не должен ронять сессию
+            print(f"[context_builder] Пропущено: {e}")
         return True
     except RepoSyncError as e:
         alert = (
