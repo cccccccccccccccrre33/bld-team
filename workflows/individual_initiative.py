@@ -2,7 +2,7 @@
 Индивидуальная инициатива — не только 2 фиксированных отряда. ЛЮБОЙ
 человек компании с реальным доступом к коду (9 глобальных гениев + 4
 специалиста + 3 growth-роли + 10 expansion-гениев + 10 архитекторов +
-150 Global Elite I/II = 186 человек) может сам заметить проблему в
+450 Global Elite I/II/III/IV/V = 486 человек) может сам заметить проблему в
 СВОЕЙ специализации и предложить фикс. (Старая цифра "26" в этом же
 комментарии была неточной ещё до Global Elite — не учитывала 10
 expansion-гениев; посчитано заново по факту содержимого словарей, а не
@@ -37,6 +37,12 @@ from agents.global_elite import ELITE1_BUILDERS, ELITE1_LABELS
 from agents.global_elite import ELITE1_SPECIALTY_KEYWORDS
 from agents.global_elite_100 import ELITE2_BUILDERS, ELITE2_LABELS
 from agents.global_elite_100 import ELITE2_SPECIALTY_KEYWORDS
+from agents.global_elite_3 import ELITE3_BUILDERS, ELITE3_LABELS
+from agents.global_elite_3 import ELITE3_SPECIALTY_KEYWORDS
+from agents.global_elite_4 import ELITE4_BUILDERS, ELITE4_LABELS
+from agents.global_elite_4 import ELITE4_SPECIALTY_KEYWORDS
+from agents.global_elite_5 import ELITE5_BUILDERS, ELITE5_LABELS
+from agents.global_elite_5 import ELITE5_SPECIALTY_KEYWORDS
 from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
 from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
@@ -52,11 +58,13 @@ from workflows.task_board import add_task, can_take_more, get_board_summary, is_
 
 ALL_BUILDERS = {
     **GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS,
-    **ARCHITECT_BUILDERS, **ELITE1_BUILDERS, **ELITE2_BUILDERS,
+    **ARCHITECT_BUILDERS, **ELITE1_BUILDERS, **ELITE2_BUILDERS, **ELITE3_BUILDERS, **ELITE4_BUILDERS,
+    **ELITE5_BUILDERS,
 }
 ALL_LABELS = {
     **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
-    **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS,
+    **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS, **ELITE3_LABELS, **ELITE4_LABELS,
+    **ELITE5_LABELS,
 }
 
 # Ключевые слова специализации каждого — те же самые, по которым в
@@ -67,6 +75,7 @@ ALL_LABELS = {
 ALL_MATCH_KEYWORDS = {
     **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
     **ARCHITECT_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
+    **ELITE3_SPECIALTY_KEYWORDS, **ELITE4_SPECIALTY_KEYWORDS, **ELITE5_SPECIALTY_KEYWORDS,
 }
 
 
@@ -157,26 +166,40 @@ def find_domain_consultant(name: str, title: str, reason: str):
     """Ищет профильного эксперта для консультации по теме задачи — по
     совпадению ключевых слов темы с зоной экспертизы. Сначала смотрит
     среди исходных 10 архитекторов (architecture_council.py, они и были
-    задуманы как "кумиры"-консультанты), затем — среди 150 Global Elite
-    I/II (там зачастую более узко релевантный эксперт, чем любой из
-    10 генералистов-архитекторов). Исключает самого инициатора (нет
-    смысла "спрашивать себя"). Если совпадений нигде нет — вернёт None,
-    и тогда идём к CTO.
+    задуманы как "кумиры"-консультанты), затем — среди 450 Global Elite
+    I/II/III/IV/V (там зачастую более узко релевантный эксперт, чем
+    любой из 10 генералистов-архитекторов). Исключает самого инициатора
+    (нет смысла "спрашивать себя"). Если совпадений нигде нет — вернёт
+    None, и тогда идём к CTO.
+
+    Побеждает самое специфичное (самое длинное) совпавшее ключевое
+    слово среди ВСЕХ словарей — та же логика и та же причина, что и в
+    agents/engineering.py::pick_specialist (иначе более общий keyword
+    из architecture_council либо из более ранней волны Global Elite
+    систематически перехватывал бы более узкое совпадение из поздней
+    волны).
 
     Возвращает (consultant_key, consultant_agent, consultant_label)
     или (None, None, None)."""
     text = f"{title} {reason}".lower()
+    best_key, best_dicts, best_score = None, None, 0
     for keywords_dict, builders_dict, labels_dict in (
         (ARCHITECT_KEYWORDS, ARCHITECT_BUILDERS, ARCHITECT_LABELS),
         (ELITE1_SPECIALTY_KEYWORDS, ELITE1_BUILDERS, ELITE1_LABELS),
         (ELITE2_SPECIALTY_KEYWORDS, ELITE2_BUILDERS, ELITE2_LABELS),
+        (ELITE3_SPECIALTY_KEYWORDS, ELITE3_BUILDERS, ELITE3_LABELS),
+        (ELITE4_SPECIALTY_KEYWORDS, ELITE4_BUILDERS, ELITE4_LABELS),
+        (ELITE5_SPECIALTY_KEYWORDS, ELITE5_BUILDERS, ELITE5_LABELS),
     ):
         for key, keywords in keywords_dict.items():
             if key == name:
                 continue
-            if any(kw in text for kw in keywords):
-                builder = builders_dict[key]
-                return key, builder(can_write=False), labels_dict[key]
+            for kw in keywords:
+                if len(kw) > best_score and kw in text:
+                    best_key, best_dicts, best_score = key, (builders_dict, labels_dict), len(kw)
+    if best_key is not None:
+        builders_dict, labels_dict = best_dicts
+        return best_key, builders_dict[best_key](can_write=False), labels_dict[best_key]
     return None, None, None
 
 
