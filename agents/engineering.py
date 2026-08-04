@@ -162,7 +162,15 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     более общий keyword из более раннего словаря). Теперь сравниваются
     ВСЕ совпадения по всем специалистам, и побеждает самое специфичное
     (самое длинное) совпавшее ключевое слово — не важно, из какого
-    словаря и в каком порядке он импортирован."""
+    словаря и в каком порядке он импортирован.
+
+    ДОБАВЛЕНО при расширении департаментов (agents/squads.py, 7 вместо
+    4, пулы по 20-80 человек): при РАВНОЙ специфичности раньше побеждал
+    тот, кто первым попался в порядке итерации словаря — то есть
+    систематически один и тот же человек при большом пуле с несколькими
+    одинаково подходящими кандидатами. Теперь при ничьей — честная
+    ротация через fair_sample() (тот же общий трекер участия
+    .state/participation.json, что и у Pulse/Chevruta/Lab/HR)."""
     import random
 
     from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
@@ -177,6 +185,7 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
     from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
     from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
+    from workflows._common import fair_sample
 
     all_keywords = {
         **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
@@ -185,14 +194,20 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
         **ELITE6_SPECIALTY_KEYWORDS,
     }
     lowered = lead_summary.lower()
-    best_name, best_score = None, 0
+    best_score = 0
+    best_names: list[str] = []
     for name, keywords in all_keywords.items():
         if name not in pool:
             continue
         for kw in keywords:
-            if len(kw) > best_score and kw in lowered:
-                best_name, best_score = name, len(kw)
-    if best_name is not None:
-        return best_name, pool[best_name]
+            if kw not in lowered:
+                continue
+            if len(kw) > best_score:
+                best_score, best_names = len(kw), [name]
+            elif len(kw) == best_score and name not in best_names:
+                best_names.append(name)
+    if best_names:
+        name = fair_sample(best_names, k=1)[0]
+        return name, pool[name]
     name = random.choice(list(pool.keys()))
     return name, pool[name]
