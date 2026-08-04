@@ -47,12 +47,14 @@ from agents.squads import SQUADS
 
 def assign_task_to_squad(task: str) -> str:
     """По ключевым словам решает, какому отряду ближе задача. Порядок
-    проверки — от самых специфичных зон к самой общей: security/
-    надёжность (bravo), инфраструктура (platform), интерфейс (product),
-    и только затем ядро/данные (alpha). Если непонятно — по умолчанию
-    alpha, т.к. большинство задач у BLD пока про сам движок/данные."""
+    проверки — от самых специфичных зон к самой общей: QA/тестирование
+    (qra), anomaly-движок/trust scoring (anomaly), понимание языка
+    (nlu), security/надёжность (bravo), инфраструктура (platform),
+    интерфейс (product), и только затем ядро/данные (alpha) — она же
+    финальный fallback, т.к. большинство задач у BLD пока про сам
+    движок/данные и это самая широкая по ключевым словам зона."""
     lowered = task.lower()
-    for key in ("bravo", "platform", "product", "alpha"):
+    for key in ("qra", "anomaly", "nlu", "bravo", "platform", "product", "alpha"):
         if any(kw in lowered for kw in SQUADS[key]["domain_keywords"]):
             return key
     return "alpha"
