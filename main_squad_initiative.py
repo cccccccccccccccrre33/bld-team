@@ -3,14 +3,15 @@
 цикл: отряд сам находит задачу, проходит approval CTO (или берёт
 мелкую сам), выполняет.
 
-Запуск всех отрядов (alpha, bravo, platform, product):
+Запуск всех департаментов (alpha, bravo, platform, product, anomaly,
+nlu, qra — полный список всегда см. agents/squads.py::SQUADS):
     python main_squad_initiative.py
 
-Запуск одного отряда:
+Запуск одного департамента (пример; ключ должен быть в SQUADS):
     python main_squad_initiative.py alpha
-    python main_squad_initiative.py bravo
-    python main_squad_initiative.py platform
-    python main_squad_initiative.py product
+    python main_squad_initiative.py anomaly
+    python main_squad_initiative.py nlu
+    python main_squad_initiative.py qra
 """
 
 from dotenv import load_dotenv
