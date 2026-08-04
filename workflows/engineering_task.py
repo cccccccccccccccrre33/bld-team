@@ -25,6 +25,12 @@ from agents.architecture_council import SPECIALTY_KEYWORDS as ARCHITECT_KEYWORDS
 from agents.engineering import build_lead_engineer, build_specialist_pool
 from agents.expansion_geniuses import GLOBAL_LABELS as EXPANSION_LABELS
 from agents.expansion_geniuses import SPECIALTY_KEYWORDS as EXPANSION_KEYWORDS
+from agents.global_elite import ELITE1_LABELS, ELITE1_SPECIALTY_KEYWORDS
+from agents.global_elite_100 import ELITE2_LABELS, ELITE2_SPECIALTY_KEYWORDS
+from agents.global_elite_3 import ELITE3_LABELS, ELITE3_SPECIALTY_KEYWORDS
+from agents.global_elite_4 import ELITE4_LABELS, ELITE4_SPECIALTY_KEYWORDS
+from agents.global_elite_5 import ELITE5_LABELS, ELITE5_SPECIALTY_KEYWORDS
+from agents.global_elite_6 import ELITE6_LABELS, ELITE6_SPECIALTY_KEYWORDS
 from agents.global_geniuses import GLOBAL_LABELS
 from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
 from agents.growth_team import GROWTH_LABELS
@@ -32,15 +38,52 @@ from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
 from agents.review_gate import run_review_gate
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
-from config.models import BOARD_MODEL_ASSIGNMENTS, EXPANSION_MODEL_ASSIGNMENTS, GLOBAL_MODEL_ASSIGNMENTS, GROWTH_MODEL_ASSIGNMENTS, SPECIALIST_MODEL_ASSIGNMENTS
+from config.models import (
+    BOARD_MODEL_ASSIGNMENTS,
+    EXPANSION_MODEL_ASSIGNMENTS,
+    GLOBAL_ELITE_1_MODEL_ASSIGNMENTS,
+    GLOBAL_ELITE_2_MODEL_ASSIGNMENTS,
+    GLOBAL_ELITE_3_MODEL_ASSIGNMENTS,
+    GLOBAL_ELITE_4_MODEL_ASSIGNMENTS,
+    GLOBAL_ELITE_5_MODEL_ASSIGNMENTS,
+    GLOBAL_ELITE_6_MODEL_ASSIGNMENTS,
+    GLOBAL_MODEL_ASSIGNMENTS,
+    GROWTH_MODEL_ASSIGNMENTS,
+    SPECIALIST_MODEL_ASSIGNMENTS,
+)
 from tools.repo_tools import commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
 from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, safe_agent_run, sync_repos_or_alert
+from workflows._common import compile_brief, curate_knowledge, fair_sample, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 
-ALL_SPECIALTY_KEYWORDS = {**GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS, **ARCHITECT_KEYWORDS}
-ALL_SPECIALIST_LABELS = {**GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS, **ARCHITECT_LABELS}
-ALL_SPECIALIST_MODELS = {**GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS, **EXPANSION_MODEL_ASSIGNMENTS}
+# РАНЬШЕ этот словарь не включал Global Elite I-VI вообще (только
+# гении/специалисты/growth/expansion/architects) — то есть ~600 из
+# ~612 человек компании были физически недостижимы через
+# find_matching_specialists(), даже если их ключевые слова идеально
+# совпадали с задачей: помощь либо не звалась вовсе, либо (в
+# run_engineering_task, где помощь ОБЯЗАТЕЛЬНА для отрядов —
+# force_consult=True) доставалась случайному человеку из пула через
+# random.choice, полностью игнорируя специализацию. При расширении
+# отрядов (agents/squads.py) до 7 департаментов с пулами по 20-80
+# человек из Global Elite I-VI это стало особенно заметно — почти
+# весь новый пул был недоступен для реального адресного матчинга.
+ALL_SPECIALTY_KEYWORDS = {
+    **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
+    **ARCHITECT_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
+    **ELITE3_SPECIALTY_KEYWORDS, **ELITE4_SPECIALTY_KEYWORDS, **ELITE5_SPECIALTY_KEYWORDS,
+    **ELITE6_SPECIALTY_KEYWORDS,
+}
+ALL_SPECIALIST_LABELS = {
+    **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
+    **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS, **ELITE3_LABELS,
+    **ELITE4_LABELS, **ELITE5_LABELS, **ELITE6_LABELS,
+}
+ALL_SPECIALIST_MODELS = {
+    **GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS,
+    **EXPANSION_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_1_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_2_MODEL_ASSIGNMENTS,
+    **GLOBAL_ELITE_3_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_4_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_5_MODEL_ASSIGNMENTS,
+    **GLOBAL_ELITE_6_MODEL_ASSIGNMENTS,
+}
 
 # РАНЬШЕ: решение "звать ли помощь" принималось поиском подстрок вида
 # "нужна помощь" в свободном тексте лида — если лид описывал ситуацию
@@ -132,13 +175,53 @@ def guess_repo(task: str) -> str:
     return "bld-system"
 
 
-def find_matching_specialists(text: str, max_specialists: int = 2) -> list[str]:
+def find_matching_specialists(
+    text: str, max_specialists: int = 2, keywords: dict[str, list[str]] | None = None,
+) -> list[str]:
     """По ключевым словам определяет, чья специализация подходит под
     описанную лидом оставшуюся работу — максимум max_specialists штук,
-    чтобы не разводить бесконечный найм."""
+    чтобы не разводить бесконечный найм.
+
+    По умолчанию keywords — ALL_SPECIALTY_KEYWORDS (вся компания), но
+    вызывающий код (run_engineering_task) передаёт уже отфильтрованный
+    под конкретный отряд pool_keywords — раньше это значение вообще не
+    использовалось, матчинг всегда шёл по всей компании, а потом
+    результат фильтровался на "входит ли в pool" ПОСЛЕ того, как
+    max_specialists уже потрачен — то есть для маленького пула отряда
+    почти всегда матчей не оставалось и решало random.choice, полностью
+    игнорируя специализацию.
+
+    РАНЬШЕ: просто порядок словаря — `matches[:max_specialists]`, без
+    ранжирования по специфичности и без учёта, кого уже привлекали
+    недавно. При пуле в 2-4 человека это было не так заметно, но при
+    пуле в 20-80 (после расширения департаментов, см. agents/squads.py)
+    это стало систематическим перекосом: словарь, слитый в
+    ALL_SPECIALTY_KEYWORDS первым (GENIUS_KEYWORDS), всегда выигрывал
+    у более специфичных совпадений из Global Elite, слитых позже.
+
+    ТЕПЕРЬ: 1) побеждает самое специфичное (самое длинное) совпавшее
+    ключевое слово, а не первое по порядку словаря; 2) при равной
+    специфичности — честная ротация через fair_sample() (тот же
+    трекер .state/participation.json, что уже используют Pulse/
+    Chevruta/Individual Initiative/Lab/HR), а не всегда одни и те же
+    имена, которые случайно оказались раньше в словаре."""
+    active_keywords = keywords if keywords is not None else ALL_SPECIALTY_KEYWORDS
     lowered = text.lower()
-    matches = [name for name, kws in ALL_SPECIALTY_KEYWORDS.items() if any(kw in lowered for kw in kws)]
-    return matches[:max_specialists]
+    best_len: dict[str, int] = {}
+    for name, kws in active_keywords.items():
+        matched = [kw for kw in kws if kw in lowered]
+        if matched:
+            best_len[name] = max(len(kw) for kw in matched)
+    if not best_len:
+        return []
+
+    ordered: list[str] = []
+    for length in sorted(set(best_len.values()), reverse=True):
+        tier = [name for name, l in best_len.items() if l == length]
+        ordered.extend(fair_sample(tier, k=len(tier)))
+        if len(ordered) >= max_specialists:
+            break
+    return ordered[:max_specialists]
 
 
 # Иерархия принятия решений: у Review Gate РЕАЛЬНОЕ право вето, не
@@ -254,7 +337,7 @@ async def run_engineering_task(
         # точнее, меньше случайных ложных срабатываний на непричастные
         # слова из середины рассказа о работе.
         match_source = ", ".join(help_areas) if help_areas else clean_lead_summary
-        matched_names = [n for n in find_matching_specialists(match_source, max_specialists=2) if n in pool]
+        matched_names = find_matching_specialists(match_source, max_specialists=2, keywords=pool_keywords)
         if not matched_names:
             import random
             matched_names = [random.choice(list(pool.keys()))]
