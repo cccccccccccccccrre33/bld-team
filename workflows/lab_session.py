@@ -22,6 +22,7 @@ import sys
 
 from agent_framework import Message
 
+from agents.architecture_council import ARCHITECT_LABELS
 from agents.global_geniuses import GLOBAL_LABELS
 from agents.growth_team import GROWTH_LABELS
 from agents.specialists import SPECIALIST_LABELS
@@ -57,6 +58,7 @@ ROLE_LABELS = {
     **GLOBAL_LABELS,
     **SPECIALIST_LABELS,
     **GROWTH_LABELS,
+    **ARCHITECT_LABELS,
 }
 
 OPENING_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
