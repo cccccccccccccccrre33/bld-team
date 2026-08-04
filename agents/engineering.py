@@ -112,7 +112,7 @@ write_file) — не плейсхолдер, а готовый код с учё�
 
 def build_specialist_pool() -> dict:
     """Пул именных специалистов (архетипы мировых топ-вузов + инженерный
-    спецназ + Global Elite I/II/III/IV/V), которых лид-инженер может
+    спецназ + Global Elite I/II/III/IV/V/VI), которых лид-инженер может
     'нанять' под конкретную задачу — все с write_file, реально пишут
     код. Используется вместо generic junior_engineer, когда нужен
     конкретный профиль (надёжность → ETH или Reliability Engineer,
@@ -120,7 +120,8 @@ def build_specialist_pool() -> dict:
     и т.д. — см. SPECIALTY_KEYWORDS в agents/global_geniuses.py,
     agents/specialists.py и agents/global_elite.py /
     agents/global_elite_100.py / agents/global_elite_3.py /
-    agents/global_elite_4.py / agents/global_elite_5.py)."""
+    agents/global_elite_4.py / agents/global_elite_5.py /
+    agents/global_elite_6.py)."""
     from agents.architecture_council import ARCHITECT_BUILDERS
     from agents.engineering_fellows import FELLOW_BUILDERS
     from agents.expansion_geniuses import GENIUS_BUILDERS as EXPANSION_BUILDERS
@@ -129,6 +130,7 @@ def build_specialist_pool() -> dict:
     from agents.global_elite_3 import ELITE3_BUILDERS
     from agents.global_elite_4 import ELITE4_BUILDERS
     from agents.global_elite_5 import ELITE5_BUILDERS
+    from agents.global_elite_6 import ELITE6_BUILDERS
     from agents.global_geniuses import GENIUS_BUILDERS
     from agents.growth_team import GROWTH_BUILDERS
     from agents.specialists import SPECIALIST_BUILDERS
@@ -144,12 +146,13 @@ def build_specialist_pool() -> dict:
     pool.update({name: builder(can_write=True) for name, builder in ELITE3_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in ELITE4_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in ELITE5_BUILDERS.items()})
+    pool.update({name: builder(can_write=True) for name, builder in ELITE6_BUILDERS.items()})
     return pool
 
 
 def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     """По ключевым словам в тексте лида определяет наиболее подходящего
-    специалиста из пула (включая 450 человек Global Elite I/II/III/IV/V);
+    специалиста из пула (включая 550 человек Global Elite I/II/III/IV/V/VI);
     если явных совпадений нет — берёт случайного.
 
     ВАЖНО (исправлено при добавлении Global Elite IV, актуально и для
@@ -170,6 +173,7 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
     from agents.global_elite_3 import ELITE3_SPECIALTY_KEYWORDS
     from agents.global_elite_4 import ELITE4_SPECIALTY_KEYWORDS
     from agents.global_elite_5 import ELITE5_SPECIALTY_KEYWORDS
+    from agents.global_elite_6 import ELITE6_SPECIALTY_KEYWORDS
     from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
     from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
     from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
@@ -178,6 +182,7 @@ def pick_specialist(lead_summary: str, pool: dict) -> tuple[str, object]:
         **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
         **ARCHITECT_KEYWORDS, **FELLOW_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
         **ELITE3_SPECIALTY_KEYWORDS, **ELITE4_SPECIALTY_KEYWORDS, **ELITE5_SPECIALTY_KEYWORDS,
+        **ELITE6_SPECIALTY_KEYWORDS,
     }
     lowered = lead_summary.lower()
     best_name, best_score = None, 0
