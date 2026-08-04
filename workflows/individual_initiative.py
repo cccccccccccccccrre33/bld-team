@@ -2,7 +2,7 @@
 Индивидуальная инициатива — не только 2 фиксированных отряда. ЛЮБОЙ
 человек компании с реальным доступом к коду (9 глобальных гениев + 4
 специалиста + 3 growth-роли + 10 expansion-гениев + 10 архитекторов +
-450 Global Elite I/II/III/IV/V = 486 человек) может сам заметить проблему в
+550 Global Elite I/II/III/IV/V/VI = 586 человек) может сам заметить проблему в
 СВОЕЙ специализации и предложить фикс. (Старая цифра "26" в этом же
 комментарии была неточной ещё до Global Elite — не учитывала 10
 expansion-гениев; посчитано заново по факту содержимого словарей, а не
@@ -43,6 +43,8 @@ from agents.global_elite_4 import ELITE4_BUILDERS, ELITE4_LABELS
 from agents.global_elite_4 import ELITE4_SPECIALTY_KEYWORDS
 from agents.global_elite_5 import ELITE5_BUILDERS, ELITE5_LABELS
 from agents.global_elite_5 import ELITE5_SPECIALTY_KEYWORDS
+from agents.global_elite_6 import ELITE6_BUILDERS, ELITE6_LABELS
+from agents.global_elite_6 import ELITE6_SPECIALTY_KEYWORDS
 from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
 from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
@@ -59,12 +61,12 @@ from workflows.task_board import add_task, can_take_more, get_board_summary, is_
 ALL_BUILDERS = {
     **GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS,
     **ARCHITECT_BUILDERS, **ELITE1_BUILDERS, **ELITE2_BUILDERS, **ELITE3_BUILDERS, **ELITE4_BUILDERS,
-    **ELITE5_BUILDERS,
+    **ELITE5_BUILDERS, **ELITE6_BUILDERS,
 }
 ALL_LABELS = {
     **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
     **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS, **ELITE3_LABELS, **ELITE4_LABELS,
-    **ELITE5_LABELS,
+    **ELITE5_LABELS, **ELITE6_LABELS,
 }
 
 # Ключевые слова специализации каждого — те же самые, по которым в
@@ -76,6 +78,7 @@ ALL_MATCH_KEYWORDS = {
     **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
     **ARCHITECT_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
     **ELITE3_SPECIALTY_KEYWORDS, **ELITE4_SPECIALTY_KEYWORDS, **ELITE5_SPECIALTY_KEYWORDS,
+    **ELITE6_SPECIALTY_KEYWORDS,
 }
 
 
@@ -166,8 +169,8 @@ def find_domain_consultant(name: str, title: str, reason: str):
     """Ищет профильного эксперта для консультации по теме задачи — по
     совпадению ключевых слов темы с зоной экспертизы. Сначала смотрит
     среди исходных 10 архитекторов (architecture_council.py, они и были
-    задуманы как "кумиры"-консультанты), затем — среди 450 Global Elite
-    I/II/III/IV/V (там зачастую более узко релевантный эксперт, чем
+    задуманы как "кумиры"-консультанты), затем — среди 550 Global Elite
+    I/II/III/IV/V/VI (там зачастую более узко релевантный эксперт, чем
     любой из 10 генералистов-архитекторов). Исключает самого инициатора
     (нет смысла "спрашивать себя"). Если совпадений нигде нет — вернёт
     None, и тогда идём к CTO.
@@ -190,6 +193,7 @@ def find_domain_consultant(name: str, title: str, reason: str):
         (ELITE3_SPECIALTY_KEYWORDS, ELITE3_BUILDERS, ELITE3_LABELS),
         (ELITE4_SPECIALTY_KEYWORDS, ELITE4_BUILDERS, ELITE4_LABELS),
         (ELITE5_SPECIALTY_KEYWORDS, ELITE5_BUILDERS, ELITE5_LABELS),
+        (ELITE6_SPECIALTY_KEYWORDS, ELITE6_BUILDERS, ELITE6_LABELS),
     ):
         for key, keywords in keywords_dict.items():
             if key == name:
