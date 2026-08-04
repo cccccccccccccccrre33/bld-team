@@ -13,6 +13,7 @@ import asyncio
 from agent_framework import Message
 
 from agents.executive_board import build_executive_board
+from agents.architecture_council import ARCHITECT_LABELS
 from agents.global_geniuses import GLOBAL_LABELS
 from agents.growth_team import GROWTH_LABELS
 from agents.specialists import SPECIALIST_LABELS
@@ -33,6 +34,7 @@ ROLE_LABELS = {
     **GLOBAL_LABELS,
     **SPECIALIST_LABELS,
     **GROWTH_LABELS,
+    **ARCHITECT_LABELS,
 }
 
 
