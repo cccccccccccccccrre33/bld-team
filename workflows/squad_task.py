@@ -19,6 +19,7 @@ from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo
 from workflows._common import record_participation, safe_agent_run
 from workflows.engineering_task import run_engineering_task
+from workflows.task_board import record_task_participants
 
 RISK_KEYWORDS = [
     "миграц", "удалить", "удаление", "breaking", "переписать полностью",
@@ -105,9 +106,15 @@ breaking change/необратимое изменение), и просит тв
     return approved, text
 
 
-async def run_squad_task(squad_key: str, task: str | None = None) -> str:
+async def run_squad_task(squad_key: str, task: str | None = None, task_id: str | None = None) -> str:
     """Прогоняет одну задачу через один отряд — переиспользует
-    run_engineering_task с лидом и пулом этого отряда."""
+    run_engineering_task с лидом и пулом этого отряда.
+
+    task_id — опционально: если передан (вызывающий код уже завёл
+    запись на доске задач через workflows.task_board.add_task), сюда же
+    прикрепляются фактические участники через record_task_participants
+    — используется потом в get_specialist_stats()/hr_rotation_review.py.
+    Без task_id функция работает ровно как раньше."""
     squad = SQUADS[squad_key]
 
     if not task:
@@ -118,6 +125,9 @@ async def run_squad_task(squad_key: str, task: str | None = None) -> str:
     lead = squad["lead_builder"]()
     full_pool = build_specialist_pool()
     squad_pool = {name: full_pool[name] for name in squad["member_names"] if name in full_pool}
+
+    if task_id:
+        record_task_participants(task_id, [lead.name, *squad_pool.keys()])
 
     report = await run_engineering_task(
         task,
@@ -161,25 +171,76 @@ async def dispatch_squads(tasks_by_squad: dict[str, str | None]) -> list[str]:
     return await asyncio.gather(*coros)
 
 
-def task_spans_both_domains(task: str) -> bool:
-    """True, если задача реально задевает зоны ОБОИХ отрядов — тогда
-    их лучше не пускать параллельно на разные ветки (риск рассинхрона),
-    а провести эстафету на одной ветке."""
+def detect_relevant_squads(task: str) -> list[str]:
+    """Возвращает ключи ВСЕХ департаментов (agents/squads.py::SQUADS),
+    чья зона (domain_keywords) реально задета текстом задачи — порядок
+    как в SQUADS (стабильный, не случайный, чтобы order у run_squad_relay
+    был воспроизводим при повторном вызове с тем же текстом).
+
+    РАНЬШЕ (task_spans_both_domains ниже) смотрела ТОЛЬКО на alpha/bravo
+    — жёстко зашитую пару из эпохи, когда отрядов было всего 2. При 7
+    департаментах это значило, что кросс-департаментная задача —
+    например, Product + Anomaly & Trust Engine (как показать аномалию
+    менеджеру в панели) — никогда не распознавалась как совместная:
+    целиком уезжала в один департамент, вторая грань терялась, либо
+    кто-то должен был вручную вызвать run_squad_relay() с правильным
+    order. Теперь любое совпадение по любому департаменту учитывается
+    автоматически — и для решения "нужна ли эстафета", и как готовый
+    order для run_squad_relay().
+    """
     lowered = task.lower()
-    alpha_hit = any(kw in lowered for kw in SQUADS["alpha"]["domain_keywords"])
-    bravo_hit = any(kw in lowered for kw in SQUADS["bravo"]["domain_keywords"])
-    return alpha_hit and bravo_hit
+    return [
+        key for key, squad in SQUADS.items()
+        if any(kw in lowered for kw in squad["domain_keywords"])
+    ]
 
 
-async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> str:
-    """Оба отряда работают НАД ОДНОЙ задачей ПОСЛЕДОВАТЕЛЬНО на одной
-    (своей, изолированной через git worktree) ветке — каждый берёт
-    свою часть, второй продолжает поверх первого.
+def task_spans_both_domains(task: str) -> bool:
+    """Сохранено для обратной совместимости старых вызовов, ожидавших
+    именно alpha+bravo — теперь тонкая обёртка над
+    detect_relevant_squads(), а не отдельная реализация. Новый код
+    должен звать detect_relevant_squads() напрямую — она даёт полный
+    список причастных департаментов (может быть 0, 1, 2 или больше),
+    а не просто да/нет по одной жёстко зашитой паре."""
+    matched = detect_relevant_squads(task)
+    return "alpha" in matched and "bravo" in matched
+
+
+async def run_squad_relay(task: str, order: list[str] | None = None, task_id: str | None = None) -> str:
+    """Все переданные в order отряды работают НАД ОДНОЙ задачей
+    ПОСЛЕДОВАТЕЛЬНО на одной (своей, изолированной через git worktree)
+    ветке — каждый берёт свою часть, следующий продолжает поверх
+    предыдущего. order может быть любой длины (2+), не только пара
+    alpha/bravo — см. detect_relevant_squads().
+
+    Если order не передан явно, определяется автоматически через
+    detect_relevant_squads(task) — на случай, если вызывающий код
+    просто хочет "проведи эстафету по фактическим зонам этой задачи",
+    не выясняя заранее, какие именно департаменты задеты.
+
+    task_id — опционально: если передан (вызывающий код уже завёл
+    запись на доске задач через workflows.task_board.add_task), сюда
+    прикрепляются лиды-участники эстафеты через record_task_participants
+    — используется потом в get_specialist_stats()/hr_rotation_review.py.
+    Без task_id функция работает ровно как раньше.
     """
     from agents.review_gate import run_review_gate
     from tools.repo_tools import commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
     from workflows.cto_approval import cto_approval
     from workflows.engineering_task import guess_repo, make_branch_name, needs_rework
+
+    if not order:
+        order = detect_relevant_squads(task)
+    order = list(order)
+    if len(order) < 2:
+        # Вырожденный случай (детект не нашёл 2+ зоны, а вызывающий код
+        # всё равно попросил эстафету) — не падаем, просто эстафета из
+        # одного отряда фактически равносильна run_squad_task. Решение
+        # "с кем" принадлежит вызывающему коду, не этой функции — она
+        # не пытается сама дополнить order до валидной пары.
+        print(f"[relay] Внимание: order содержит меньше 2 отрядов ({order}) — эстафета вырождается в один отряд.")
+
+    relay_label = " → ".join(SQUADS[k]["label"] for k in order)
 
     repo_name = guess_repo(task)
     branch_name = make_branch_name(task, "ai-relay")
@@ -217,6 +278,8 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
 
     engineering_summary = "\n\n".join(findings)
     record_participation(*(leads_by_squad[k].name for k in order))
+    if task_id:
+        record_task_participants(task_id, [leads_by_squad[k].name for k in order])
 
     print("[relay] Коммитим объединённое изменение...")
     push_result = commit_and_push(repo_name, branch_name, f"AI engineering (relay): {task[:60]}")
@@ -240,7 +303,7 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
     else:
         print("[relay] Review Gate: есть замечания — решение за CTO...")
         cto_approved, cto_comment = await cto_approval(
-            squad_label=f"Эстафета {SQUADS['alpha']['label']} → {SQUADS['bravo']['label']}",
+            squad_label=f"Эстафета {relay_label}",
             task_title=task,
             reason=f"Review Gate дал замечания по совместной работе:\n{review_verdict}",
             how="Оба отряда уже закончили свои части последовательно на одной ветке.",
@@ -259,7 +322,7 @@ async def run_squad_relay(task: str, order: list[str] = ("alpha", "bravo")) -> s
             )
 
     return (
-        f"🔗 СОВМЕСТНАЯ ЗАДАЧА — ЭСТАФЕТА ({SQUADS['alpha']['label']} → {SQUADS['bravo']['label']})\n\n"
+        f"🔗 СОВМЕСТНАЯ ЗАДАЧА — ЭСТАФЕТА ({relay_label})\n\n"
         f"ЗАДАЧА:\n{task}\n\n"
         f"РЕПОЗИТОРИЙ: {repo_name}\nВЕТКА: {branch_name}\n\n"
         + engineering_summary

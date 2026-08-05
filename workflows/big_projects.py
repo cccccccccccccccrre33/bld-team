@@ -118,16 +118,49 @@ def project_path(project_id: str) -> Path:
 
 
 def load_project(project_id: str) -> dict:
+    """РАНЬШЕ brief/facets НИКОГДА не сохранялись в сам JSON проекта —
+    их всегда читали заново из PROJECTS_REGISTRY (см. ниже по файлу,
+    было PROJECTS_REGISTRY[project['id']]['brief'] и
+    PROJECTS_REGISTRY[project_id]["facets"]). Это значило, что
+    ЕДИНСТВЕННЫЙ способ завести новый проект — вручную дописать запись
+    в этот статический словарь в коде и закоммитить: даже если совет
+    директоров или обсуждение в Company Pulse решали, что нужен новый
+    крупный проект, идея просто терялась, пока кто-то (Валик) не
+    вспоминал и не правил код руками.
+
+    ТЕПЕРЬ brief и facets — часть самого сохранённого dict проекта
+    (пишутся при создании, см. register_project() ниже) — так что
+    новый проект можно завести ПОЛНОСТЬЮ в рантайме, без правки кода.
+    PROJECTS_REGISTRY остаётся как есть — легаси-путь для проектов,
+    у которых ещё нет файла на диске (первый запуск), не единственный
+    путь регистрации."""
     path = project_path(project_id)
     if path.exists():
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
+            # Старые файлы, сохранённые ДО этого изменения, не содержат
+            # brief/facets — на этот случай подстраховываемся легаси-
+            # реестром, если запись там есть (для seasonal_mode и
+            # подобных — так избегаем KeyError на уже накопленном
+            # прогрессе существующих проектов).
+            if "brief" not in data or "facets" not in data:
+                legacy = PROJECTS_REGISTRY.get(project_id, {})
+                data.setdefault("brief", legacy.get("brief", ""))
+                data.setdefault("facets", legacy.get("facets", []))
+            return data
         except Exception:
             pass
+    if project_id not in PROJECTS_REGISTRY:
+        raise KeyError(
+            f"Проект '{project_id}' не найден ни в .state/projects/, ни в PROJECTS_REGISTRY — "
+            "используй register_project() для регистрации нового проекта, а не load_project() напрямую."
+        )
     reg = PROJECTS_REGISTRY[project_id]
     return {
         "id": project_id,
         "title": reg["title"],
+        "brief": reg["brief"],
+        "facets": reg["facets"],
         "phase": "DIGEST",
         "log": [],
         "decisions": [],
@@ -192,7 +225,7 @@ async def run_facet_cluster(project: dict, facet_key: str, facet_desc: str, face
 Проект: {project['title']} (фаза: {project['phase']})
 
 Бриф проекта:
-{PROJECTS_REGISTRY[project['id']]['brief']}
+{project['brief']}
 
 Что уже обсуждалось в проекте (весь проект, не только эта грань):
 {recent_log}
@@ -273,7 +306,7 @@ async def run_project_day(project_id: str) -> None:
         return
 
     roster = build_full_roster()
-    facets = PROJECTS_REGISTRY[project_id]["facets"]
+    facets = project["facets"]
 
     print(f"[{project_id}] Фаза {project['phase']} — запускаем {len(facets)} параллельных кластеров...")
     await asyncio.gather(*[
@@ -354,10 +387,155 @@ async def run_project_day(project_id: str) -> None:
         send_telegram_report(f"🎉 Проект «{project['title']}» полностью реализован!")
 
 
+async def generate_facets_from_brief(title: str, brief: str) -> list[list]:
+    """Через LLM разбивает бриф на 2-4 грани обсуждения (facet_key,
+    facet_desc, facet_keywords) — тот же формат, что вручную заданные
+    facets в PROJECTS_REGISTRY выше (seasonal_mode — пример разметки
+    руками). Нужна для register_project() ниже, когда facets не
+    переданы явно: формулировать их руками для каждой новой
+    само-зарегистрированной идеи было бы снова той самой правкой кода,
+    от которой Дыра №2 (см. ТЗ) уходит."""
+    from config.client_factory import get_chat_client
+
+    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS.get("agenda_setter", "gpt-5.2"))
+    prompt = f"""
+Проект: {title}
+
+Бриф:
+{brief}
+
+Разбей реализацию этого проекта на 2-4 конкретные грани обсуждения —
+как их обсуждали бы параллельные небольшие группы специалистов, каждая
+грань — отдельный угол именно ЭТОГО брифа (например: UX, данные/бэкенд,
+бизнес-обоснование, инфраструктура — конкретно под задачу, не общий
+шаблон "UX/данные/бизнес" бездумно).
+
+Для каждой грани ответь ТРЕМЯ строками подряд без нумерации, блоки
+разделяй пустой строкой:
+КЛЮЧ: [короткий английский идентификатор, snake_case, без пробелов]
+ОПИСАНИЕ: [1 предложение — что именно обсуждает эта группа]
+КЛЮЧЕВЫЕ_СЛОВА: [3-6 слов/словосочетаний через запятую, по-русски — для подбора релевантных специалистов]
+"""
+    response = await ask(client, prompt)
+
+    facets: list[list] = []
+    key = desc = None
+    for line in response.split("\n"):
+        line = line.strip()
+        if line.upper().startswith("КЛЮЧ:"):
+            key = line.split(":", 1)[-1].strip().lower().replace(" ", "_") or f"facet_{len(facets) + 1}"
+        elif line.upper().startswith("ОПИСАНИЕ:"):
+            desc = line.split(":", 1)[-1].strip()
+        elif line.upper().startswith("КЛЮЧЕВЫЕ_СЛОВА:") or line.upper().startswith("КЛЮЧЕВЫЕ СЛОВА:"):
+            kws = [k.strip().lower() for k in line.split(":", 1)[-1].strip().split(",") if k.strip()]
+            if key and desc:
+                facets.append([key, desc, kws])
+            key = desc = None
+
+    if not facets:
+        # Честный фолбэк — одна общая грань, лучше, чем упасть с
+        # пустым списком (run_project_day с facets=[] технически не
+        # упадёт на asyncio.gather(*[]), но проект тогда никогда не
+        # продвинется ни на шаг — DIGEST так и останется пустым вечно).
+        facets = [["general", "Общее осмысление и реализация проекта целиком", []]]
+    return facets[:4]
+
+
+async def register_project(project_id: str, title: str, brief: str,
+                            facets: list[list] | None = None) -> dict:
+    """Регистрирует НОВЫЙ крупный проект в .state/projects/{project_id}.json
+    — БЕЗ правки PROJECTS_REGISTRY в коде. Это и есть закрытие Дыры №2
+    (см. ТЗ): раньше единственный способ завести проект — вручную
+    дописать словарь в этом файле и закоммитить, то есть даже если идея
+    родилась и была одобрена в обсуждении (совет директоров,
+    Company Pulse), она терялась, пока Валик сам не вспоминал и не
+    правил код. Теперь любой воркфлоу (board_meeting.py, goal_intake.py)
+    может вызвать это напрямую.
+
+    Если facets не переданы явно — генерируются автоматически
+    (generate_facets_from_brief). Если project_id уже существует на
+    диске — возвращает существующий ПРОЕКТ БЕЗ ИЗМЕНЕНИЙ (идемпотентно;
+    не даёт повторной регистрацией случайно затереть прогресс уже
+    идущего проекта).
+
+    ВАЖНО: регистрация НЕ обходит согласование — новый проект стартует
+    с phase="DIGEST", реализация (IMPLEMENTATION) по-прежнему наступит
+    только после APPROVAL-фазы (см. run_project_day() ниже, cto_approval()
+    там как был, так и остался обязательным шагом). Само-регистрация
+    ускоряет только "завести проект", не "согласовать и запустить в
+    работу без спроса".
+    """
+    existing_path = project_path(project_id)
+    if existing_path.exists():
+        print(f"[big_projects] Проект '{project_id}' уже существует — регистрация пропущена, возвращаю как есть.")
+        return load_project(project_id)
+
+    if facets is None:
+        facets = await generate_facets_from_brief(title, brief)
+
+    project = {
+        "id": project_id,
+        "title": title,
+        "brief": brief,
+        "facets": facets,
+        "phase": "DIGEST",
+        "log": [],
+        "decisions": [],
+        "created": datetime.now().isoformat(),
+    }
+    save_project(project)
+    print(f"[big_projects] Новый проект зарегистрирован: '{project_id}' ({title}), {len(facets)} граней.")
+    return project
+
+
+def list_active_project_ids() -> list[str]:
+    """Все project_id с phase != DONE — легаси из PROJECTS_REGISTRY
+    (проекты, для которых ещё нет файла на диске, считаются активными
+    по умолчанию — они ещё не начинались, фаза DIGEST) И
+    само-зарегистрированные из .state/projects/*.json, включая те,
+    каких вообще нет в PROJECTS_REGISTRY (именно то, что даёт
+    register_project()). Используется main() ниже, когда project_id не
+    передан явно — раньше в этом случае ВСЕГДА бралась только
+    'seasonal_mode' (см. main() ниже и .github/workflows/big_project_day.yml
+    — там был жёсткий дефолт), то есть новые само-зарегистрированные
+    проекты никогда бы не попали на cron-расписание, даже если бы
+    register_project() уже существовала."""
+    ids = set(PROJECTS_REGISTRY.keys())
+    if PROJECTS_DIR.exists():
+        ids.update(p.stem for p in PROJECTS_DIR.glob("*.json"))
+
+    active = []
+    for pid in sorted(ids):
+        try:
+            project = load_project(pid)
+        except KeyError:
+            continue
+        if project.get("phase") != "DONE":
+            active.append(pid)
+    return active
+
+
 async def main():
     import sys
-    project_id = sys.argv[1] if len(sys.argv) > 1 else "seasonal_mode"
-    await run_project_day(project_id)
+    if len(sys.argv) > 1:
+        await run_project_day(sys.argv[1])
+        return
+
+    # РАНЬШЕ: без явного аргумента ВСЕГДА бралась 'seasonal_mode' —
+    # единственный проект, существовавший на момент написания этого
+    # файла. Cron-расписание (.github/workflows/big_project_day.yml)
+    # не передаёт аргумент вообще, так что каждый пятничный тик молча
+    # прогонял только сезонный режим, даже если появлялись другие
+    # активные проекты. ТЕПЕРЬ без аргумента — работаем параллельно
+    # (как squad_initiative.py делает для отрядов) над ВСЕМИ активными
+    # проектами сразу, включая само-зарегистрированные через
+    # register_project().
+    active = list_active_project_ids()
+    if not active:
+        print("Нет активных проектов ('20% времени') — нечего делать в этот тик.")
+        return
+    print(f"Активных проектов: {len(active)} ({', '.join(active)}) — работаем над всеми параллельно.")
+    await asyncio.gather(*(run_project_day(pid) for pid in active))
 
 
 if __name__ == "__main__":

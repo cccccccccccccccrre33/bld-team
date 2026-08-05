@@ -19,7 +19,13 @@ from workflows.task_board import add_task, get_board_summary, update_task_status
 ESCALATION_MARKER = "ТРЕБУЕТ ТЕБЯ"
 
 
-async def run_gtm_initiative() -> None:
+async def run_gtm_initiative(task_hint: str | None = None, goal_id: str | None = None) -> None:
+    """task_hint/goal_id — опционально, оба default None (старое
+    поведение по расписанию не меняется вообще). Добавлены, чтобы
+    workflows/goal_intake.py (/goal) могло передать сюда реальный текст
+    цели вместо того, чтобы GTM Lead каждый раз сам придумывал тему с
+    нуля — раньше эта функция вообще не принимала никакого входного
+    сигнала, кроме доски задач."""
     print(f"\n{'='*60}")
     print("[gtm] ИНИЦИАТИВА — GTM департамент")
     print(f"{'='*60}")
@@ -32,10 +38,16 @@ async def run_gtm_initiative() -> None:
     board_summary = get_board_summary()
     lead = build_gtm_lead()
 
+    hint_block = (
+        f"\nКонкретный запрос, с которым стоит начать (направление, не обязательно "
+        f"дословная формулировка задачи для доски): {task_hint}\n"
+        if task_hint else ""
+    )
+
     prompt = f"""
 Текущая доска задач компании (контекст, не только твоя зона):
 {board_summary}
-
+{hint_block}
 Следуй своему процессу: посмотри, что уже есть в gtm-materials/, найди
 ОДНУ конкретную полезную задачу прямо сейчас, сделай её через
 write_gtm_doc, заверши текстовым резюме.
@@ -54,8 +66,9 @@ write_gtm_doc, заверши текстовым резюме.
         title,
         "gtm",
         status="needs_founder_decision" if needs_founder else "done",
-        reason="Автономная инициатива GTM-департамента.",
+        reason="Автономная инициатива GTM-департамента." if not task_hint else f"Инициировано через /goal: {task_hint}",
         how="Документ сохранён в gtm-materials/.",
+        goal_id=goal_id,
     )
     if needs_founder:
         update_task_status(task_id, "needs_founder_decision")

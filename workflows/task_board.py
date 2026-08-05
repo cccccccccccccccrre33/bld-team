@@ -96,8 +96,16 @@ def _save(board: dict) -> None:
 
 
 def add_task(title: str, squad: str, status: str = "proposed",
-             reason: str = "", how: str = "") -> str:
-    """Добавляет задачу на доску. Возвращает её task_id."""
+             reason: str = "", how: str = "", goal_id: str | None = None) -> str:
+    """Добавляет задачу на доску. Возвращает её task_id.
+
+    goal_id — опционально: если задача заведена как часть цели,
+    поставленной через /goal (workflows/goal_intake.py), сюда пишется
+    общий идентификатор цели — так все подзадачи одной цели можно
+    собрать вместе (см. get_tasks_by_goal()/list_open_goal_ids() ниже),
+    даже если они разъехались по разным департаментам/эстафете/проекту.
+    Для задач вне /goal остаётся None — поведение существующих вызовов
+    не меняется."""
     board = _load()
     task_id = f"{squad}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -111,9 +119,99 @@ def add_task(title: str, squad: str, status: str = "proposed",
         "created": now,
         "updated": now,
         "cto_comment": "",
+        # "participants" — ИМЕНА (как в agents/squads.py::member_names /
+        # record_participation), кто фактически работал над задачей.
+        # Заполняется ПОЗЖЕ, отдельным вызовом record_task_participants()
+        # — на момент add_task() исполнители ещё обычно не известны
+        # (задача может неделю простоять в proposed/approved). Пустой
+        # список — не ошибка, просто "пока не известно" или "старая
+        # запись до появления этого поля" (см. get_specialist_stats()
+        # ниже — она честно игнорирует записи без участников).
+        "participants": [],
+        "goal_id": goal_id,
     })
     _save(board)
     return task_id
+
+
+def record_task_participants(task_id: str, participants: list[str]) -> None:
+    """Прикрепляет к задаче ФАКТИЧЕСКИХ исполнителей — вызывается из
+    run_squad_task/run_squad_relay (workflows/squad_task.py) в момент,
+    когда лид и пул уже определены, отдельно от update_task_status(),
+    чтобы не завязывать это на конкретный статус (участники известны
+    уже на старте выполнения, не только в момент done/rejected).
+
+    Только ДОБАВЛЯЕТ новые имена (не затирает уже записанные). Нужна
+    для get_specialist_stats() ниже — без неё вся статистика по задаче
+    участвует, но обезличенно, и ротация (workflows/hr_rotation_review.py)
+    не может опираться на факт, только на 'кто-то в этом отряде
+    что-то делал'.
+    """
+    board = _load()
+    for task in board["tasks"]:
+        if task["id"] == task_id:
+            existing = set(task.get("participants") or [])
+            existing.update(participants)
+            task["participants"] = sorted(existing)
+            break
+    _save(board)
+
+
+def get_specialist_stats() -> dict[str, dict[str, int]]:
+    """Агрегирует ПО ВСЕМ задачам доски: для каждого участника (имя как
+    в record_task_participants/record_participation) — сколько задач с
+    его участием закончились done / rejected / timed_out.
+
+    Считает только задачи с непустым "participants" — записи без этого
+    поля (старые, до появления record_task_participants, или задачи,
+    где участников никто не прикрепил) просто не попадают в статистику.
+    Это честная деградация на неполных данных, а не ошибка: раньше
+    единственным сигналом "кто как работает" был .state/participation.json
+    из workflows/_common.py::record_participation(), но там только
+    ФАКТ участия ("когда в последний раз") — ни слова про то, довёл ли
+    человек задачу до done или её отклонили/она зависла. Этот метод —
+    первый источник данных, откуда вообще можно судить об исходе, а не
+    только о частоте.
+
+    timed_out НЕ считается ни успехом, ни провалом по существу (см.
+    докстринг STALE_HOURS/reconcile_stale_tasks выше — обрыв процесса,
+    не отказ) — но всё равно возвращается отдельным счётчиком,
+    вызывающий код (hr_rotation_review.py) сам решает, как его учитывать.
+    """
+    board = _load()
+    stats: dict[str, dict[str, int]] = {}
+    for t in board["tasks"]:
+        status = t.get("status")
+        if status not in ("done", "rejected", "timed_out"):
+            continue
+        for name in (t.get("participants") or []):
+            entry = stats.setdefault(name, {"done": 0, "rejected": 0, "timed_out": 0})
+            entry[status] += 1
+    return stats
+
+
+def get_tasks_by_goal(goal_id: str) -> list[dict]:
+    """Все задачи (любого статуса) с данным goal_id — подзадачи одной
+    цели, поставленной через /goal (workflows/goal_intake.py), могли
+    разъехаться по разным департаментам/эстафете/проекту, это
+    единственное место, где их видно вместе."""
+    board = _load()
+    return [t for t in board["tasks"] if t.get("goal_id") == goal_id]
+
+
+def list_open_goal_ids() -> list[str]:
+    """Все goal_id, у которых есть хотя бы одна НЕзавершённая
+    (proposed/approved/self_approved/in_progress) подзадача — то есть
+    цель ещё в процессе. Используется workflows/goal_status.py для
+    суточного обзора всех целей сразу, без того, чтобы Валику самому
+    держать в голове, какие goal_id он вообще заводил."""
+    board = _load()
+    open_statuses = {"proposed", "approved", "self_approved", "in_progress"}
+    open_ids = {
+        t["goal_id"] for t in board["tasks"]
+        if t.get("goal_id") and t.get("status") in open_statuses
+    }
+    return sorted(open_ids)
 
 
 def update_task_status(task_id: str, status: str, cto_comment: str = "") -> None:

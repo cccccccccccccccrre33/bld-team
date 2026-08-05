@@ -35,7 +35,7 @@ from workflows._common import (
     sync_repos_or_alert,
 )
 from workflows.squad_initiative import run_squad_initiative
-from workflows.squad_task import dispatch_squads, run_squad_relay, run_squad_task, task_spans_both_domains
+from workflows.squad_task import detect_relevant_squads, dispatch_squads, run_squad_relay, run_squad_task
 from workflows.task_board import (
     MAX_CONCURRENT,
     add_task as board_add_task,
@@ -203,6 +203,55 @@ async def compile_report(agenda: str, transcript: list[Message]) -> str:
     return await ask(secretary_client, prompt)
 
 
+async def assess_if_big_project(agenda: str, report: str) -> tuple[str, str, str] | None:
+    """Решает, тянет ли обсуждённая на совете тема на ОТДЕЛЬНЫЙ крупный
+    проект "20% времени" (workflows/big_projects.py), а не на обычную
+    одну инженерную задачу (обычный путь ниже, extract_next_step).
+    Порог сознательно высокий — это дорогой процесс (несколько дней
+    параллельных обсуждений + отдельное согласование), не должен
+    срабатывать на каждом заседании.
+
+    Возвращает (project_id, title, brief) или None (подавляющее
+    большинство заседаний — именно None, обычная задача)."""
+    client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["secretary"])
+    prompt = f"""
+Вопрос заседания: {agenda}
+
+Отчёт заседания:
+{report}
+
+Это обсуждение тянет на ОТДЕЛЬНЫЙ КРУПНЫЙ ПРОЕКТ уровня "построить
+новую систему/фичу с нуля, требует несколько дней параллельной работы
+разных граней (UX + данные + бизнес-обоснование и т.п.)", а не на одну
+инженерную задачу на один прогон? Порог высокий — обычная
+задача/багфикс/рефакторинг НЕ считается, даже если звучит важно.
+Настоящий крупный проект — редкость, большинство заседаний НЕ дотягивают.
+
+Если НЕТ — ответь строго: НЕТ, ОБЫЧНАЯ ЗАДАЧА
+
+Если ДА — ответь строго в формате:
+ПРОЕКТ: ДА
+ID: [короткий английский идентификатор, snake_case, без пробелов]
+НАЗВАНИЕ: [короткое название по-русски]
+БРИФ: [3-6 предложений — что именно нужно построить и почему; этого должно хватить команде, чтобы начать осмысление с нуля]
+"""
+    response = await ask(client, prompt)
+    if "ПРОЕКТ: ДА" not in response.upper():
+        return None
+
+    project_id = title = brief = None
+    for line in response.split("\n"):
+        if line.upper().startswith("ID:"):
+            project_id = line.split(":", 1)[-1].strip().lower().replace(" ", "_")
+        elif line.upper().startswith("НАЗВАНИЕ:"):
+            title = line.split(":", 1)[-1].strip()
+        elif line.upper().startswith("БРИФ:"):
+            brief = line.split(":", 1)[-1].strip()
+    if not (project_id and title and brief):
+        return None
+    return project_id, title, brief
+
+
 async def main():
     cli_hint = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else None
 
@@ -242,9 +291,10 @@ async def main():
         # коду — она сама по себе достаточно конкретна, чтобы стать
         # инженерной задачей, даже если групповое обсуждение не удалось.
         # Не выбрасываем хорошую тему только из-за сбоя в discussion-слое.
-        if task_spans_both_domains(agenda):
-            print("Тема затрагивает обе зоны — отряды работают эстафетой...")
-            relay_report = await run_squad_relay(agenda)
+        relevant = detect_relevant_squads(agenda)
+        if len(relevant) >= 2:
+            print(f"Тема затрагивает {len(relevant)} зон(ы) ({'+'.join(relevant)}) — отряды работают эстафетой...")
+            relay_report = await run_squad_relay(agenda, order=relevant)
             brief = await compile_brief(relay_report)
             send_telegram_report(brief)
             await curate_knowledge("Совет директоров (без обсуждения) / Эстафета", relay_report)
@@ -274,6 +324,38 @@ async def main():
     brief = await compile_brief(report, context_hint="заседание совета директоров")
     send_telegram_report(brief)
 
+    # РАНЬШЕ: единственный путь из обсуждения совета в реализацию —
+    # extract_next_step() всегда извлекает ОДНУ инженерную задачу, даже
+    # если по факту совет обсудил идею уровня "построить новую систему
+    # с нуля" (по духу — совсем другой процесс, workflows/big_projects.py,
+    # DIGEST->DESIGN->APPROVAL->IMPLEMENTATION->DONE, а не одна ветка на
+    # один прогон). Раньше единственным способом завести такую идею как
+    # big project было руками дописать её в PROJECTS_REGISTRY — то есть
+    # даже если совет это обсудил, идея терялась, пока Валик сам не
+    # вспоминал и не коммитил запись. Порог высокий (см.
+    # assess_if_big_project) — почти всегда сработает обычный путь ниже.
+    print("\n" + "=" * 80)
+    print("Проверяем, не тянет ли обсуждение на отдельный крупный проект...")
+    big_project_verdict = await assess_if_big_project(agenda, report)
+    if big_project_verdict is not None:
+        from workflows.big_projects import register_project
+
+        project_id, project_title, project_brief = big_project_verdict
+        print(f"Совет посчитал это крупным проектом уровня '20% времени': {project_title}")
+        project = await register_project(project_id, project_title, project_brief)
+        note = (
+            f"🏗️ Совет директоров счёл тему достаточно крупной для отдельного "
+            f"проекта \"20% времени\", а не разовой задачи.\n\n"
+            f"Проект зарегистрирован: «{project['title']}» (id: {project_id}).\n"
+            f"Дальше он пойдёт по обычному циклу DIGEST → DESIGN → APPROVAL "
+            f"(твоё согласование НЕ пропущено, оно всё ещё впереди) → IMPLEMENTATION — "
+            f"см. main_big_project_day.py / расписание Big Project Day."
+        )
+        print(note)
+        send_telegram_report(note)
+        await curate_knowledge("Совет директоров / Новый крупный проект", report + "\n\n" + note)
+        return
+
     # Инженерная команда реально пишет и коммитит код по "следующему
     # шагу" — в отдельную ветку; мерж в main теперь автоматический через
     # Review Gate (см. workflows/engineering_task.py), без основателя.
@@ -295,18 +377,23 @@ async def main():
         send_telegram_report(alert)
         return
 
-    if task_spans_both_domains(task):
-        print("Задача затрагивает обе зоны — отряды работают эстафетой на одной ветке...")
+    relevant = detect_relevant_squads(task)
+    if len(relevant) >= 2:
+        relay_zones = "+".join(relevant)
+        print(f"Задача затрагивает {len(relevant)} зон(ы) ({relay_zones}) — отряды работают эстафетой на одной ветке...")
         # РАНЬШЕ эта задача вообще не попадала на общую доску задач —
         # workflows/task_board.py её не видел, а значит MAX_CONCURRENT и
         # проверка дублей по всей компании были неполными (учитывали
         # только Squad/Individual Initiative, но не совет директоров).
+        # РАНЬШЕ (до generalize) squad-поле всегда было жёстко
+        # "relay:alpha+bravo", даже когда реально задетые зоны были
+        # другими — теперь отражает фактический набор департаментов.
         relay_task_id = board_add_task(
-            task, "relay:alpha+bravo", status="in_progress",
-            reason="Совместная задача обеих зон — извлечена как 'следующий шаг' заседания совета директоров.",
+            task, f"relay:{relay_zones}", status="in_progress",
+            reason=f"Совместная задача {len(relevant)} зон ({relay_zones}) — извлечена как 'следующий шаг' заседания совета директоров.",
         )
         try:
-            relay_report = await run_squad_relay(task)
+            relay_report = await run_squad_relay(task, order=relevant)
             board_update_task_status(relay_task_id, "done")
         except Exception as e:
             board_update_task_status(relay_task_id, "rejected", f"Упало с необработанным исключением: {e}")

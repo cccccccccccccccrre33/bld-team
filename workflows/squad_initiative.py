@@ -23,7 +23,7 @@ from tools.repo_tools import clone_or_update_repos, grep_repo, git_log
 from tools.telegram_report import send_telegram_report
 from workflows._common import ask, compile_brief, curate_knowledge
 from workflows.cto_approval import cto_approval
-from workflows.squad_task import run_squad_task
+from workflows.squad_task import detect_relevant_squads, run_squad_relay, run_squad_task
 from workflows.task_board import (
     add_task, can_take_more, get_board_summary,
     is_duplicate, update_task_status,
@@ -161,10 +161,30 @@ async def run_squad_initiative(squad_key: str) -> None:
 
     print(f"[{squad_key}] Proposal: {title}")
 
+    # РАНЬШЕ отряд, найдя проблему, ВСЕГДА решал её в одиночку — даже
+    # если формулировка (title+reason) реально задевала зону другого
+    # департамента (например, Anomaly нашёл задачу, которая на деле
+    # требует и Product — как показать это в панели). Теперь проверяем
+    # через detect_relevant_squads(), задевает ли предложение зону ещё
+    # какого-то департамента, и если да — идём в эстафету, а не
+    # оставляем вторую грань никем не реализованной. squad_key всегда
+    # первый в списке (он инициатор находки), даже если формально его
+    # собственные domain_keywords не совпали дословно с текстом задачи.
+    relevant_squads = detect_relevant_squads(f"{title} {reason}")
+    if squad_key not in relevant_squads:
+        relevant_squads = [squad_key] + relevant_squads
+    is_relay = len(relevant_squads) >= 2
+    display_label = " → ".join(SQUADS[k]["label"] for k in relevant_squads) if is_relay else squad_label
+    board_squad_field = f"relay:{'+'.join(relevant_squads)}" if is_relay else squad_key
+
+    if is_relay:
+        print(f"[{squad_key}] Задача задевает {len(relevant_squads)} зон(ы) "
+              f"({'+'.join(relevant_squads)}) — пойдёт эстафетой, не в одиночку")
+
     minor = is_minor_fix(title)
 
     if minor:
-        task_id = add_task(title, squad_key, status="self_approved",
+        task_id = add_task(title, board_squad_field, status="self_approved",
                            reason=reason, how=how)
         update_task_status(task_id, "in_progress")
         print(f"[{squad_key}] Мелкая задача — берём без approval CTO")
@@ -172,9 +192,9 @@ async def run_squad_initiative(squad_key: str) -> None:
         approved = True
     else:
         print(f"[{squad_key}] Запрашиваем approval у CTO...")
-        task_id = add_task(title, squad_key, status="proposed",
+        task_id = add_task(title, board_squad_field, status="proposed",
                            reason=reason, how=how)
-        approved, cto_comment = await cto_approval(squad_label, title, reason, how)
+        approved, cto_comment = await cto_approval(display_label, title, reason, how)
 
         if approved:
             update_task_status(task_id, "in_progress", cto_comment)
@@ -183,7 +203,7 @@ async def run_squad_initiative(squad_key: str) -> None:
             update_task_status(task_id, "rejected", cto_comment)
             report = (
                 f"❌ CTO ОТКЛОНИЛ ЗАДАЧУ\n\n"
-                f"Отряд: {squad_label}\n"
+                f"Отряд: {display_label}\n"
                 f"Задача: {title}\n\n"
                 f"Комментарий CTO: {cto_comment}"
             )
@@ -193,11 +213,14 @@ async def run_squad_initiative(squad_key: str) -> None:
 
     # Выполняем
     try:
-        report = await run_squad_task(squad_key, title)
+        if is_relay:
+            report = await run_squad_relay(title, order=relevant_squads, task_id=task_id)
+        else:
+            report = await run_squad_task(squad_key, title, task_id=task_id)
     except Exception as e:
-        print(f"[{squad_key}] run_squad_task упал с исключением: {e}")
+        print(f"[{squad_key}] выполнение упало с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-        error_report = f"❌ ИНИЦИАТИВА ОТРЯДА УПАЛА С ОШИБКОЙ\n\nОтряд: {squad_label}\nЗадача: {title}\n\nОшибка: {e}"
+        error_report = f"❌ ИНИЦИАТИВА ОТРЯДА УПАЛА С ОШИБКОЙ\n\nОтряд: {display_label}\nЗадача: {title}\n\nОшибка: {e}"
         print(error_report)
         send_telegram_report(error_report)
         return
@@ -205,8 +228,8 @@ async def run_squad_initiative(squad_key: str) -> None:
     update_task_status(task_id, "done")
 
     full_report = (
-        f"🏁 ИНИЦИАТИВА ОТРЯДА\n\n"
-        f"Отряд: {squad_label}\n"
+        f"🏁 ИНИЦИАТИВА {'ЭСТАФЕТОЙ' if is_relay else 'ОТРЯДА'}\n\n"
+        f"Отряд{'ы' if is_relay else ''}: {display_label}\n"
         f"{'🔓 Взято самостоятельно (мелкое)' if minor else f'✅ Одобрено CTO: {cto_comment}'}\n\n"
         + report
     )
@@ -214,7 +237,7 @@ async def run_squad_initiative(squad_key: str) -> None:
     print(f"\n[ПОЛНЫЙ ОТЧЁТ]\n{full_report}")
     print(f"\n[КОРОТКО В TELEGRAM]\n{brief}")
     send_telegram_report(brief)
-    await curate_knowledge(f"Инициатива: {squad_label}", full_report)
+    await curate_knowledge(f"Инициатива: {display_label}", full_report)
 
 
 async def run_all_squads_initiative(squad_keys: list[str] | None = None) -> None:
