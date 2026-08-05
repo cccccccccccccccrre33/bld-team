@@ -374,3 +374,44 @@ SQUADS = {
         ],
     },
 }
+
+
+def _apply_roster_overrides() -> None:
+    """Применяет решения HR Rotation Review (workflows/hr_rotation_review.py
+    ::apply_rotation) — читает .state/squad_roster_overrides.json,
+    формат {"имя": "целевой_департамент"}, и переносит имя в
+    member_names целевого департамента, убирая из остальных.
+
+    НЕ редактирует member_names ВЫШЕ в этом файле напрямую (регулярным
+    выражением на каждый перенос) — это было бы риском тихо сломать
+    синтаксис файла с ~600 именами в списках. Отдельный JSON-оверрайд
+    поверх статически объявленного SQUADS безопаснее и даёт чистую
+    историю кадровых решений в git-логе самого файла-оверрайда, а не
+    диффами посреди полусотни других имён здесь.
+
+    Если файла нет, он пустой или битый — SQUADS остаётся ровно таким,
+    как объявлено выше, без изменений. Это норма (пока ни одной
+    ротации не применялось), не ошибка."""
+    import json
+    from pathlib import Path
+
+    overrides_path = Path(".state/squad_roster_overrides.json")
+    if not overrides_path.exists():
+        return
+    try:
+        overrides = json.loads(overrides_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[squads] Не удалось прочитать squad_roster_overrides.json ({e}) — оверрайды пропущены.")
+        return
+
+    for name, target_key in overrides.items():
+        if target_key not in SQUADS:
+            continue
+        for key, squad in SQUADS.items():
+            if key != target_key and name in squad["member_names"]:
+                squad["member_names"].remove(name)
+        if name not in SQUADS[target_key]["member_names"]:
+            SQUADS[target_key]["member_names"].append(name)
+
+
+_apply_roster_overrides()
