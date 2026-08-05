@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       project_id:
-        description: 'ID проекта (по умолчанию — seasonal_mode)'
+        description: 'ID проекта (пусто = все активные проекты сразу)'
         required: false
-        default: 'seasonal_mode'
+        default: ''
 
 permissions:
   contents: write
@@ -48,4 +48,21 @@ jobs:
           GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
           TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main_big_project_day.py "${{ github.event.inputs.project_id || 'seasonal_mode' }}"
+        run: |
+          # РАНЬШЕ здесь был жёсткий фолбэк `|| 'seasonal_mode'` — то
+          # есть КАЖДЫЙ тик (и cron, у которого inputs вообще нет, и
+          # ручной запуск с пустым полем) всегда прогонял ТОЛЬКО
+          # seasonal_mode, даже после того как появлялись другие
+          # активные проекты (например, само-зарегистрированные через
+          # workflows/big_projects.py::register_project() из заседания
+          # совета директоров) — они просто никогда бы не попали на
+          # это расписание. Теперь пустой ввод передаётся КАК ЕСТЬ —
+          # main_big_project_day.py сам решает: без аргумента работает
+          # параллельно надо всеми активными проектами сразу (см.
+          # workflows/big_projects.py::list_active_project_ids()).
+          PID="${{ github.event.inputs.project_id }}"
+          if [ -n "$PID" ]; then
+            python main_big_project_day.py "$PID"
+          else
+            python main_big_project_day.py
+          fi

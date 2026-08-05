@@ -1,0 +1,47 @@
+name: Goal Status
+
+on:
+  schedule:
+    # Раз в день, 11:00 Киев (08 UTC) — суточная сводка по всем ещё не
+    # завершённым целям /goal, чтобы не приходилось помнить и сверять
+    # goal_id вручную.
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      goal_id:
+        description: 'Конкретный goal_id (пусто = обзор всех незавершённых целей)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  goal_status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run goal status
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          GID="${{ github.event.inputs.goal_id }}"
+          if [ -n "$GID" ]; then
+            python main_goal_status.py "$GID"
+          else
+            python main_goal_status.py
+          fi

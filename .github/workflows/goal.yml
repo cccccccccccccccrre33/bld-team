@@ -1,35 +1,19 @@
-name: Squad Initiative
+name: Goal
 
 on:
-  schedule:
-    # Было 3 раза/день на 2 отряда (6 запусков/день). Теперь 4 отряда —
-    # снижаем до 2 раз/день, чтобы не удвоить косты: 10:00, 17:00 Киев
-    # (7, 14 UTC) = 8 запусков/день, шире охват при похожем бюджете.
-    - cron: '0 7,14 * * *'
   workflow_dispatch:
     inputs:
-      squad:
-        description: 'Какой отряд (пусто = все)'
-        required: false
-        default: ''
-        type: choice
-        options:
-          - ''
-          - alpha
-          - bravo
-          - platform
-          - product
-          - anomaly
-          - nlu
-          - qra
+      goal:
+        description: 'Цель свободным текстом — система сама разложит по департаментам/эстафете/проекту/GTM'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  initiative:
+  goal:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -44,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run squad initiative
+      - name: Run /goal
         env:
           FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
           AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
@@ -55,10 +39,4 @@ jobs:
           TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
           MAX_CONCURRENT_TASKS:     ${{ vars.MAX_CONCURRENT_TASKS }}
-        run: |
-          SQUAD="${{ github.event.inputs.squad }}"
-          if [ -n "$SQUAD" ]; then
-            python main_squad_initiative.py "$SQUAD"
-          else
-            python main_squad_initiative.py
-          fi
+        run: python main_goal.py "${{ github.event.inputs.goal }}"

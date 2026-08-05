@@ -1,0 +1,59 @@
+name: HR Rotation Review
+
+on:
+  schedule:
+    # Раз в 4 недели — кадровое решение дороже багфикса, не должно
+    # быть шумным (в отличие от squad_initiative/company_pulse, которые
+    # крутятся по нескольку раз в день). 1 число месяца, 09:00 Киев
+    # (06 UTC).
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      apply_name:
+        description: 'Имя специалиста для применения решения (пусто = только обзор)'
+        required: false
+        default: ''
+      apply_squad:
+        description: 'Департамент, куда переносим (нужен вместе с apply_name)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  rotation_review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run HR Rotation Review
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          NAME="${{ github.event.inputs.apply_name }}"
+          SQUAD="${{ github.event.inputs.apply_squad }}"
+          if [ -n "$NAME" ] && [ -n "$SQUAD" ]; then
+            python main_hr_rotation_review.py --apply "$NAME" "$SQUAD"
+          else
+            python main_hr_rotation_review.py
+          fi
