@@ -262,7 +262,10 @@ async def main():
     from workflows.engineering_task import run_engineering_task
 
     try:
-        engineering_report = await run_engineering_task(task)
+        # lab_session.yml: timeout-minutes: 15 (900с), из которых сама
+        # рабочая сессия в паре/тройке + CTO approval уже прошли до
+        # этой точки. 500с оставляет запас на wrap-up.
+        engineering_report = await run_engineering_task(task, soft_timeout_seconds=500)
     except Exception as e:
         print(f"[lab_session] run_engineering_task упал с исключением: {e}")
         error_report = f"❌ РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ УПАЛА С ОШИБКОЙ\n\nЗадача: {task}\n\nОшибка: {e}"

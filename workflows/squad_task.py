@@ -129,12 +129,17 @@ async def run_squad_task(squad_key: str, task: str | None = None, task_id: str |
     if task_id:
         record_task_participants(task_id, [lead.name, *squad_pool.keys()])
 
+    # squad_initiative.yml: timeout-minutes: 25 (1500с). Отряды тоже
+    # идут параллельно через asyncio.gather (см. run_squad_initiative в
+    # squad_initiative.py и dispatch_squads() выше в этом файле) — не
+    # делим бюджет на N отрядов.
     report = await run_engineering_task(
         task,
         lead_agent=lead,
         lead_label=f"Squad Lead ({squad['label']})",
         helper_pool=squad_pool,
         force_consult=True,
+        soft_timeout_seconds=1200,
     )
     record_participation(lead.name, *squad_pool.keys())
     return f"{squad['label']}\n\n{report}"

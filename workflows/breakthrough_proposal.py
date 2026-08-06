@@ -202,12 +202,16 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
     fellow_writer = FELLOW_BUILDERS[fellow_key](can_write=True)
 
     try:
+        # breakthrough_proposal.yml: timeout-minutes: 25 (1500с), из
+        # которых фильтр предложения + сбор команды уже съели часть
+        # до этой точки. 1100с оставляет запас на compile_brief/отчёт.
         report = await run_engineering_task(
             proposal["idea"],
             repo_name="bld-system",  # Fellows работают ТОЛЬКО с bld-system, никогда с bld-panel
             lead_agent=fellow_writer,
             lead_label=f"{label} (тех. лид, команда: {', '.join(helper_names)})",
             helper_pool=helper_pool,
+            soft_timeout_seconds=1100,
         )
     except Exception as e:
         print(f"[{fellow_key}] run_engineering_task упал с исключением: {e}")

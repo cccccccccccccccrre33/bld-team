@@ -192,7 +192,12 @@ async def run_chevruta() -> str:
         # MAX_CONCURRENT и молча блокирует реализацию во ВСЕХ остальных
         # воркфлоу компании, не только в хевруте.
         try:
-            engineering_report = await run_engineering_task(topic)
+            # chevruta.yml: timeout-minutes: 15 (900с), из которых
+            # хеврута (spark_hypothesis + run_free_conversation + mentor
+            # reaction + brief) уже съедает заметную часть до этой
+            # точки. 480с — оставляет ~150-200с запаса на sync_repos,
+            # compile_brief и отправку отчёта до внешнего килла.
+            engineering_report = await run_engineering_task(topic, soft_timeout_seconds=480)
         except Exception as e:
             print(f"[chevruta] run_engineering_task упал с исключением: {e}")
             update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")

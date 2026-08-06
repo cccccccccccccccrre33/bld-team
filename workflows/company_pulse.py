@@ -248,7 +248,16 @@ async def escalate_if_ready(thread: dict) -> str | None:
     from workflows.engineering_task import run_engineering_task
 
     try:
-        engineering_report = await run_engineering_task(title)
+        # company_pulse.yml: timeout-minutes: 10 (600с) — САМЫЙ тесный
+        # бюджет из всех воркфлоу, а до этой точки уже прошли pulse-тред
+        # + вердикт + repo sync. 320с — честно мало для реальной
+        # инженерной задачи; это осознанный компромисс "лучше быстрый
+        # explicit reject с понятной причиной, чем тихий SIGKILL и
+        # задача-призрак на 2 часа". Если после недели наблюдений
+        # окажется, что company_pulse систематически не успевает —
+        # это сигнал поднимать timeout-minutes в самом yml, а не
+        # раздувать soft_timeout_seconds сверх него.
+        engineering_report = await run_engineering_task(title, soft_timeout_seconds=320)
     except Exception as e:
         print(f"[company_pulse] run_engineering_task упал с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")

@@ -375,7 +375,11 @@ async def run_individual_initiative(name: str | None = None) -> None:
     # пула специалистов через ту же машинерию, что и отряды.
     writer = ALL_BUILDERS[name](can_write=True)
     try:
-        report = await run_engineering_task(title, lead_agent=writer, lead_label=label)
+        # individual_initiative.yml: timeout-minutes: 40 (2400с). Разные
+        # люди обрабатываются параллельно через asyncio.gather (см.
+        # main()), не последовательно — так что каждому можно отдать
+        # почти весь бюджет, а не делить его на N.
+        report = await run_engineering_task(title, lead_agent=writer, lead_label=label, soft_timeout_seconds=2000)
     except Exception as e:
         print(f"[{name}] run_engineering_task упал с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")

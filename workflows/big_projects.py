@@ -372,7 +372,14 @@ async def run_project_day(project_id: str) -> None:
                 continue
             task_id = add_task(part, f"project:{project_id}", status="in_progress", reason=design_summary[:200])
             try:
-                report = await run_engineering_task(part)
+                # big_project_day.yml: timeout-minutes: 45 (2700с), но
+                # здесь до 3 частей выполняются ПОСЛЕДОВАТЕЛЬНО в одном
+                # цикле (не параллельно, в отличие от squad_task/
+                # individual_initiative) — бюджет обязательно делить
+                # между ними, а не отдавать каждой части почти весь час.
+                # 700с × 3 = 2100с, оставляет ~600с на планирование
+                # частей (parts_prompt) и финальные отчёты/telegram.
+                report = await run_engineering_task(part, soft_timeout_seconds=700)
             except Exception as e:
                 print(f"[{project_id}] run_engineering_task упал с исключением на части '{part}': {e}")
                 update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")

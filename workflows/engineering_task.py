@@ -258,6 +258,64 @@ async def run_engineering_task(
     helper_pool: dict | None = None,
     branch_prefix: str = "ai-eng",
     force_consult: bool = False,
+    soft_timeout_seconds: float | None = None,
+) -> str:
+    """Тонкая обёртка над _run_engineering_task_body().
+
+    Проблема, которую это чинит: несколько воркфлоу (chevruta,
+    company_pulse, individual_initiative, squad_task, big_projects,
+    breakthrough_proposal) вызывают полный инженерный цикл ВНУТРИ
+    одного GitHub Actions job с фиксированным timeout-minutes. Раньше,
+    если цикл не укладывался — GH Actions молча убивал весь процесс
+    (SIGKILL), Python-исключение из try/except у вызывающей стороны
+    это НЕ ловило (процесса уже нет), задача оставалась в in_progress
+    до ближайшего тика unstick_task_board.yml (раз в 2 часа) —
+    держа занятым слот MAX_CONCURRENT всё это время и оставляя git-
+    ветку в непонятном промежуточном состоянии.
+
+    С soft_timeout_seconds < timeout-minutes воркфлоу — вылетаем по
+    asyncio.TimeoutError РАНЬШЕ внешнего киллера, штатно поднимаем
+    TimeoutError, который уже ловится существующим `except Exception`
+    у каждого вызывающего (chevruta.py, company_pulse.py и т.д.) —
+    задача сразу помечается rejected с понятной причиной, слот
+    освобождается немедленно, а не через часы.
+
+    Без soft_timeout_seconds (None, значение по умолчанию — например
+    для ручного запуска main_engineering.py) — старое поведение,
+    никакого внутреннего лимита, полагаемся только на внешний
+    timeout-minutes самого воркфлоу."""
+    if soft_timeout_seconds is None:
+        return await _run_engineering_task_body(
+            task, repo_name, lead_agent, lead_label, lead_model,
+            helper_pool, branch_prefix, force_consult,
+        )
+    try:
+        return await asyncio.wait_for(
+            _run_engineering_task_body(
+                task, repo_name, lead_agent, lead_label, lead_model,
+                helper_pool, branch_prefix, force_consult,
+            ),
+            timeout=soft_timeout_seconds,
+        )
+    except asyncio.TimeoutError:
+        raise TimeoutError(
+            f"Мягкий внутренний таймаут: реализация не уложилась в "
+            f"{soft_timeout_seconds:.0f}с (soft_timeout_seconds), задача "
+            "прервана раньше внешнего timeout-minutes GitHub Actions, "
+            "чтобы вызывающий код мог сразу пометить её rejected и "
+            "освободить слот MAX_CONCURRENT, а не ждать unstick_task_board."
+        ) from None
+
+
+async def _run_engineering_task_body(
+    task: str,
+    repo_name: str | None = None,
+    lead_agent=None,
+    lead_label: str = "Ведущий инженер",
+    lead_model: str | None = None,
+    helper_pool: dict | None = None,
+    branch_prefix: str = "ai-eng",
+    force_consult: bool = False,
 ) -> str:
     """Полный цикл: ветка -> лид пишет код -> (опционально) привлекает
     помощь -> коммит/пуш -> Review Gate -> (опционально) переделка по

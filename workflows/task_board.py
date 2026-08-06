@@ -361,20 +361,49 @@ def get_active_tasks() -> list[dict]:
     return [t for t in board["tasks"] if t["status"] == "in_progress"]
 
 
+DUPLICATE_REJECTED_LOOKBACK_DAYS = 7
+# Сколько дней после явного rejected CTO та же (по пересечению слов)
+# тема считается дублем. Раньше is_duplicate() смотрел только на
+# proposed/approved/self_approved/in_progress — из-за этого один и тот
+# же localhost-fallback три раза подряд заводили разные squad'ы, и CTO
+# трижды перепроверял и объяснял, что это уже не проблема (см.
+# task_board.json — три "bravo" задачи про http://localhost fallback,
+# все rejected с почти одинаковым комментарием). timed_out сюда
+# СОЗНАТЕЛЬНО не входит: это не отказ CTO по существу, а обрыв
+# исполнения — повторное предложение для timed_out штатный путь retry,
+# см. STATUS_LABELS в get_board_summary() и docstring статусов вверху
+# файла. Окно в 7 дней — компромисс: не даёт тут же переспросить то,
+# что только что отклонили, но не блокирует навсегда тему, если
+# обстоятельства реально изменились.
+
+
 def is_duplicate(title: str) -> bool:
-    """True если похожая задача уже есть в активных/proposed/approved."""
+    """True если похожая задача уже есть в активных/proposed/approved,
+    либо была явно отклонена CTO (rejected) в пределах последних
+    DUPLICATE_REJECTED_LOOKBACK_DAYS дней."""
     board = _load()
     active_statuses = {"proposed", "approved", "self_approved", "in_progress"}
-    existing = [t["title"].lower() for t in board["tasks"]
-                if t["status"] in active_statuses]
-    title_lower = title.lower()
-    # Простая проверка: пересечение значимых слов (>4 символов)
-    title_words = {w for w in title_lower.split() if len(w) > 4}
-    for existing_title in existing:
-        existing_words = {w for w in existing_title.split() if len(w) > 4}
-        overlap = title_words & existing_words
-        if len(overlap) >= 2:
-            return True
+    title_words = {w for w in title.lower().split() if len(w) > 4}
+
+    def _overlaps(other_title: str) -> bool:
+        other_words = {w for w in other_title.lower().split() if len(w) > 4}
+        return len(title_words & other_words) >= 2
+
+    now = datetime.now()
+    for t in board["tasks"]:
+        if t["status"] in active_statuses:
+            if _overlaps(t["title"]):
+                return True
+            continue
+        if t["status"] == "rejected" and _overlaps(t["title"]):
+            try:
+                updated = datetime.strptime(t.get("updated", ""), "%d.%m.%Y %H:%M")
+            except ValueError:
+                # Не можем разобрать дату — перестраховываемся и всё
+                # равно считаем дублем, а не молча пропускаем проверку.
+                return True
+            if (now - updated).days < DUPLICATE_REJECTED_LOOKBACK_DAYS:
+                return True
     return False
 
 
