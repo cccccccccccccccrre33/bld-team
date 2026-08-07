@@ -30,8 +30,7 @@ from agents.roster import CODE_ACCESS_ROLES, build_full_roster
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
-from tools.telegram_report import send_telegram_report
-from workflows._common import ask, compile_brief, curate_knowledge, extract_next_step, fair_sample, looks_like_meta_complaint, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, extract_next_step, fair_sample, looks_like_meta_complaint, notify_done, notify_failed, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.research_backlog import add_entry, format_entry_for_prompt, get_revisit_candidate, mark_revisited
 
@@ -211,8 +210,8 @@ async def main():
     report = await compile_solution_report(group_names, problem, transcript)
 
     print(f"\n{'=' * 60}\n{report}")
-    brief = await compile_brief(report, context_hint="сессия Лаборатории — сравнение предложенных решений")
-    send_telegram_report(brief)
+    # РАНЬШЕ уходило в Telegram — убрано: сравнение вариантов, не
+    # готовая работа. Полный текст в вики через curate_knowledge ниже.
 
     await curate_knowledge("Лаборатория", report)
 
@@ -253,7 +252,7 @@ async def main():
         how="См. полный отчёт выше — там сравнение вариантов и обоснование.",
     )
     verdict_msg = f"🧭 CTO по итогам Лаборатории: {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
-    send_telegram_report(verdict_msg)
+    print(verdict_msg)
     if not approved:
         _stash_or_touch_backlog(f"CTO пока не одобрил ({comment[:200]}) — тема остаётся открытой для следующего захода.")
         return
@@ -268,14 +267,11 @@ async def main():
         engineering_report = await run_engineering_task(task, soft_timeout_seconds=500)
     except Exception as e:
         print(f"[lab_session] run_engineering_task упал с исключением: {e}")
-        error_report = f"❌ РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ УПАЛА С ОШИБКОЙ\n\nЗадача: {task}\n\nОшибка: {e}"
-        print(error_report)
-        send_telegram_report(error_report)
+        notify_failed(f"Лаборатория ({', '.join(group_names)}): {task[:100]}", str(e))
         _stash_or_touch_backlog(f"Одобрено CTO, но реализация упала с ошибкой ({e}) — стоит вернуться.")
         return
     full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ЛАБОРАТОРИИ\n\n{engineering_report}"
-    engineering_brief = await compile_brief(full, context_hint="реализация по итогам Лаборатории")
-    send_telegram_report(engineering_brief)
+    notify_done(task[:150])
     await curate_knowledge(f"Лаборатория → реализовано: {', '.join(group_names)}", f"{verdict_msg}\n\n{full}")
     if backlog_candidate:
         mark_revisited(backlog_candidate["id"], note="Доведено до реализации через Лабораторию.", close=True)

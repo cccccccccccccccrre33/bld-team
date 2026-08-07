@@ -20,8 +20,7 @@ from pathlib import Path
 
 from agents.squads import SQUADS
 from tools.repo_tools import clone_or_update_repos, grep_repo, git_log
-from tools.telegram_report import send_telegram_report
-from workflows._common import ask, compile_brief, curate_knowledge
+from workflows._common import ask, curate_knowledge, notify_done, notify_failed
 from workflows.cto_approval import cto_approval
 from workflows.squad_task import detect_relevant_squads, run_squad_relay, run_squad_task
 from workflows.task_board import (
@@ -201,14 +200,7 @@ async def run_squad_initiative(squad_key: str) -> None:
             print(f"[{squad_key}] CTO одобрил: {cto_comment}")
         else:
             update_task_status(task_id, "rejected", cto_comment)
-            report = (
-                f"❌ CTO ОТКЛОНИЛ ЗАДАЧУ\n\n"
-                f"Отряд: {display_label}\n"
-                f"Задача: {title}\n\n"
-                f"Комментарий CTO: {cto_comment}"
-            )
-            print(report)
-            send_telegram_report(report)
+            print(f"[{squad_key}] CTO отклонил: {display_label} — {title} — {cto_comment}")
             return
 
     # Выполняем
@@ -220,9 +212,7 @@ async def run_squad_initiative(squad_key: str) -> None:
     except Exception as e:
         print(f"[{squad_key}] выполнение упало с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-        error_report = f"❌ ИНИЦИАТИВА ОТРЯДА УПАЛА С ОШИБКОЙ\n\nОтряд: {display_label}\nЗадача: {title}\n\nОшибка: {e}"
-        print(error_report)
-        send_telegram_report(error_report)
+        notify_failed(f"{display_label}: {title[:100]}", str(e))
         return
 
     update_task_status(task_id, "done")
@@ -233,10 +223,8 @@ async def run_squad_initiative(squad_key: str) -> None:
         f"{'🔓 Взято самостоятельно (мелкое)' if minor else f'✅ Одобрено CTO: {cto_comment}'}\n\n"
         + report
     )
-    brief = await compile_brief(full_report)
     print(f"\n[ПОЛНЫЙ ОТЧЁТ]\n{full_report}")
-    print(f"\n[КОРОТКО В TELEGRAM]\n{brief}")
-    send_telegram_report(brief)
+    notify_done(f"{display_label}: {title[:120]}")
     await curate_knowledge(f"Инициатива: {display_label}", full_report)
 
 

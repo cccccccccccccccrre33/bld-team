@@ -27,9 +27,9 @@ from pathlib import Path
 from agents.roster import build_full_roster
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.telegram_report import send_telegram_report
-from workflows._common import ask, compile_brief, curate_knowledge, fair_sample, record_participation, safe_agent_run, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, fair_sample, notify_done, notify_failed, record_participation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
+from workflows.product_backlog import add_entry as add_backlog_entry
 from workflows.research_backlog import FOUNDATIONAL_AREAS, add_entry, classify_area
 from workflows.task_board import add_task, is_duplicate
 
@@ -73,19 +73,35 @@ def save_threads(threads: list[dict]) -> None:
             continue
         full_text = " ".join(m.get("text", "") for m in messages)
         area = classify_area(t.get("topic", ""), full_text)
-        if area not in FOUNDATIONAL_AREAS:
-            continue
         participants = sorted({m["who"] for m in messages})
-        add_entry(
-            topic=t.get("topic", "")[:200],
-            summary=full_text[-600:],
-            origin="company_pulse",
-            participants=participants,
-            area=area,
-        )
-        print(f"[company_pulse] Ветка '{t.get('topic', '?')}' архивируется по лимиту "
-              f"MAX_ACTIVE_THREADS, но выглядит фундаментальной ({area}) — "
-              "сохранена в research backlog вместо полной потери.")
+        if area in FOUNDATIONAL_AREAS:
+            add_entry(
+                topic=t.get("topic", "")[:200],
+                summary=full_text[-600:],
+                origin="company_pulse",
+                participants=participants,
+                area=area,
+            )
+            print(f"[company_pulse] Ветка '{t.get('topic', '?')}' архивируется по лимиту "
+                  f"MAX_ACTIVE_THREADS, но выглядит фундаментальной ({area}) — "
+                  "сохранена в research backlog вместо полной потери.")
+        else:
+            # РАНЬШЕ: всё, что не подходило под FOUNDATIONAL_AREAS,
+            # молча пропадало здесь же (continue без сохранения) — то
+            # есть обычные продуктовые ветки, не дотянувшие до
+            # "ГОТОВО: ДА" в assess_readiness, терялись безвозвратно.
+            # Теперь уходят в общий product_backlog — их могут
+            # подхватить get_pull_candidate() из individual_initiative.py
+            # или domain_scan.py в будущих тиках.
+            add_backlog_entry(
+                title=t.get("topic", "")[:200],
+                summary=full_text[-600:],
+                origin="company_pulse",
+                scope="крупное",
+                participants=participants,
+            )
+            print(f"[company_pulse] Ветка '{t.get('topic', '?')}' архивируется по лимиту "
+                  "MAX_ACTIVE_THREADS — сохранена в product backlog вместо полной потери.")
 
     threads = kept
     THREADS_PATH.write_text(json.dumps(threads, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -227,7 +243,12 @@ async def escalate_if_ready(thread: dict) -> str | None:
         "См. контекст ветки — участники обсуждали конкретный подход.",
     )
     verdict_msg = f"🧭 CTO по теме из ветки \"{thread['topic']}\": {'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'} — {comment}"
-    send_telegram_report(verdict_msg)
+    print(verdict_msg)
+    # РАНЬШЕ вердикт (одобрено/отклонено) сам по себе уходил в
+    # Telegram — по прямому запросу Валика убрано: это ещё не готовая
+    # работа, а промежуточный статус. Если approved — ниже придёт
+    # notify_done() с реальным результатом; если отклонено — ничего не
+    # шлём, комментарий CTO остаётся в task board (status=rejected).
 
     if not approved:
         return verdict_msg
@@ -261,14 +282,13 @@ async def escalate_if_ready(thread: dict) -> str | None:
     except Exception as e:
         print(f"[company_pulse] run_engineering_task упал с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-        send_telegram_report(f"❌ Реализация \"{title}\" (из ветки \"{thread['topic']}\") упала с ошибкой: {e}")
+        notify_failed(f"Реализация из ветки \"{thread['topic']}\"", str(e))
         return f"{verdict_msg}\n\n❌ Реализация упала с ошибкой: {e}"
 
     update_task_status(task_id, "done")
 
     full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ВЕТКИ \"{thread['topic']}\"\n\n{engineering_report}"
-    brief = await compile_brief(full, context_hint="реализация по итогам обсуждения в Company Pulse")
-    send_telegram_report(brief)
+    notify_done(title)
     await curate_knowledge(f"Company Pulse → реализовано: {who}", f"{verdict_msg}\n\n{full}")
     return full
 
@@ -314,10 +334,17 @@ async def run_pulse_tick() -> str | None:
     for topic, m in all_new_messages:
         lines_by_topic.setdefault(topic, []).append(f"💬 {m['who']}: {m['text']}")
 
+    # РАНЬШЕ каждый тик (каждые 30 минут — 48 раз/день) целиком уходил
+    # в Telegram. По прямому запросу Валика убрано: сырые реплики
+    # обсуждения — не готовая работа, а внутренний процесс. Полный
+    # текст никуда не делся — он в .state/company_threads.json
+    # (коммитится в git тем же save_threads() ниже), доступен по
+    # запросу. В Telegram теперь летит только то, что реально
+    # реализовано (см. notify_done() в escalate_if_ready выше).
     telegram_message = "\n\n".join(
         f"📌 {topic}\n" + "\n".join(lines) for topic, lines in lines_by_topic.items()
     )
-    send_telegram_report(telegram_message)
+    print(telegram_message)
 
     # Проверяем готовность у ВСЕХ веток, что получили сообщение в этот
     # тик (не только у одной, как раньше) — каждая независима.

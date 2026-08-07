@@ -41,8 +41,7 @@ from agents.roster import build_full_roster
 from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.telegram_report import send_telegram_report
-from workflows._common import ask, curate_knowledge, fair_sample, record_participation, run_free_conversation, sync_repos_or_alert
+from workflows._common import ask, curate_knowledge, fair_sample, notify_done, notify_failed, record_participation, run_free_conversation, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate, update_task_status
 
@@ -246,7 +245,10 @@ async def run_facet_cluster(project: dict, facet_key: str, facet_desc: str, face
         })
 
     summary_lines = "\n".join(f"{m.author_name}: {m.text.strip()}" for m in transcript)
-    send_telegram_report(f"🏗️  {project['title']} — грань «{facet_desc}»\n\n{summary_lines}")
+    print(f"🏗️  {project['title']} — грань «{facet_desc}»\n\n{summary_lines}")
+    # РАНЬШЕ уходило в Telegram каждый тик — убрано по запросу Валика:
+    # это сырое обсуждение, не готовая работа. Полный лог остаётся в
+    # project["log"] (см. выше), сохраняется вместе с проектом.
 
 
 async def assess_phase_transition(project: dict) -> str | None:
@@ -326,7 +328,10 @@ async def run_project_day(project_id: str) -> None:
         # эффект "вечного перехода в DESIGN", который никогда не доходит
         # до APPROVAL/IMPLEMENTATION.
         save_project(project)
-        send_telegram_report(f"✅ {project['title']} — фаза завершена: {transition_summary}\nПереход к фазе {project['phase']}.")
+        print(f"✅ {project['title']} — фаза завершена: {transition_summary}\nПереход к фазе {project['phase']}.")
+        # Переход фазы сам по себе — внутренний статус, не готовая
+        # работа. Убрано из Telegram по запросу Валика, остаётся в
+        # логе и в вики (curate_knowledge ниже).
         await curate_knowledge(f"Проект {project_id}: фаза завершена", transition_summary)
 
         if project["phase"] == "APPROVAL":
@@ -338,7 +343,7 @@ async def run_project_day(project_id: str) -> None:
                 design_summary,
             )
             verdict = f"{'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО — возврат в DESIGN'}: {comment}"
-            send_telegram_report(f"🧭 Согласование проекта «{project['title']}»: {verdict}")
+            print(f"🧭 Согласование проекта «{project['title']}»: {verdict}")
             if approved:
                 project["phase"] = "IMPLEMENTATION"
             else:
@@ -346,7 +351,7 @@ async def run_project_day(project_id: str) -> None:
             save_project(project)
 
         elif project["phase"] == "DONE":
-            send_telegram_report(f"🎉 Проект «{project['title']}» полностью завершён!")
+            notify_done(f"Проект «{project['title']}»")
 
     if project["phase"] == "IMPLEMENTATION":
         print(f"[{project_id}] Фаза реализации — запускаем инженерные задачи по частям...")
@@ -383,15 +388,15 @@ async def run_project_day(project_id: str) -> None:
             except Exception as e:
                 print(f"[{project_id}] run_engineering_task упал с исключением на части '{part}': {e}")
                 update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-                send_telegram_report(f"❌ Часть проекта «{project['title']}» упала с ошибкой: {part}\n\nОшибка: {e}")
+                notify_failed(f"Проект «{project['title']}» — часть: {part[:100]}", str(e))
                 continue
             update_task_status(task_id, "done")
-            send_telegram_report(f"👷 РЕАЛИЗОВАНО (проект «{project['title']}»)\n\n{report}")
+            notify_done(f"Проект «{project['title']}» — {part[:120]}")
             await curate_knowledge(f"Проект {project_id}: реализовано", report)
 
         project["phase"] = "DONE"
         save_project(project)
-        send_telegram_report(f"🎉 Проект «{project['title']}» полностью реализован!")
+        notify_done(f"Проект «{project['title']}» полностью реализован")
 
 
 async def generate_facets_from_brief(title: str, brief: str) -> list[list]:

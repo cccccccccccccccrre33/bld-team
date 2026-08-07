@@ -20,8 +20,7 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.executive_board import build_executive_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import EXEC_MODEL_ASSIGNMENTS
-from tools.telegram_report import send_telegram_report
-from workflows._common import ask, compile_brief, curate_knowledge, dispatch_worker, extract_messages, extract_next_step, looks_like_meta_complaint
+from workflows._common import ask, curate_knowledge, dispatch_worker, extract_messages, extract_next_step, looks_like_meta_complaint, notify_failed
 
 MAX_MESSAGES = 20
 
@@ -171,13 +170,16 @@ async def main():
             f"Тема: {agenda}"
         )
         print(alert)
-        send_telegram_report(alert)
+        # РАНЬШЕ это тоже уходило в Telegram — убрано: это внутренний
+        # сбой процесса заседания, не результат работы. Остаётся в логе.
 
         findings = await dispatch_worker(agenda, EXEC_MODEL_ASSIGNMENTS["worker"], COMPANY_CONTEXT)
         worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ (без обсуждения):\n{agenda}\n\n{findings}"
         print(f"\n{worker_message}")
-        brief = await compile_brief(worker_message, context_hint="сотрудник взялся за задачу без обсуждения правления")
-        send_telegram_report(brief)
+        # dispatch_worker НИКОГДА не пишет код — это текстовые
+        # рекомендации, ждущие решения Валика, не готовая работа. По
+        # его запросу — не шлём в Telegram, полный текст в вики через
+        # curate_knowledge ниже, доступен по запросу.
         await curate_knowledge("Правление (без обсуждения)", worker_message)
         return
 
@@ -188,10 +190,9 @@ async def main():
 
     print(f"\n{'=' * 80}\nГотовим отчёт...")
     report = await compile_report(agenda, transcript)
-
     print(f"\n{'=' * 80}\n{report}")
-    brief = await compile_brief(report, context_hint="заседание правления")
-    send_telegram_report(brief)
+    # Протокол заседания — не готовая работа сама по себе, остаётся в
+    # логе и в вики (curate_knowledge ниже), не летит в Telegram.
 
     print(f"\n{'=' * 80}\nОпределяем задачу для нового сотрудника...")
     secretary_client = get_chat_client(EXEC_MODEL_ASSIGNMENTS["secretary"])
@@ -199,14 +200,10 @@ async def main():
     print(f"Задача: {task}")
 
     if looks_like_meta_complaint(task):
-        alert = (
-            "⚠️ ЗАДАЧА ДЛЯ СОТРУДНИКА ВЫГЛЯДИТ НЕОСМЫСЛЕННОЙ — пропущена\n\n"
-            f"Извлечённый 'следующий шаг': {task}\n\n"
-            "Похоже на жалобу модели на нехватку данных, а не на реальную "
-            "задачу. Сотрудник НЕ запущен."
-        )
-        print(alert)
-        send_telegram_report(alert)
+        # Это диагностический сигнал о сбое самой логики извлечения
+        # задачи (не про идею/статус) — оставляем, но без LLM-сжатия.
+        notify_failed("Заседание правления: извлечённая задача бессмысленна", task[:150])
+        print("Сотрудник НЕ запущен — задача выглядит как жалоба модели, а не реальная задача.")
         return
 
     print("Сотрудник разбирается...")
@@ -214,8 +211,7 @@ async def main():
 
     worker_message = f"🧑‍💻 НОВЫЙ СОТРУДНИК ВЗЯЛСЯ ЗА ЗАДАЧУ:\n{task}\n\n{findings}"
     print(f"\n{worker_message}")
-    worker_brief = await compile_brief(worker_message, context_hint="сотрудник взялся за задачу по итогам правления")
-    send_telegram_report(worker_brief)
+    # Снова — рекомендации, не код, не готовая работа. В Telegram не шлём.
 
     await curate_knowledge("Правление", report + "\n\n" + worker_message)
 

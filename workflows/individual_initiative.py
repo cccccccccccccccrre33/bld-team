@@ -52,10 +52,10 @@ from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo
-from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, fair_sample, format_notebook, load_notebook, record_participation, save_notebook_entry
+from workflows._common import curate_knowledge, fair_sample, format_notebook, load_notebook, notify_done, notify_failed, record_participation, save_notebook_entry
 from workflows.cto_approval import consult, cto_approval
 from workflows.engineering_task import run_engineering_task
+from workflows.product_backlog import get_pull_candidate, mark_pulled
 from workflows.task_board import add_task, can_take_more, get_board_summary, is_duplicate, update_task_status
 
 ALL_BUILDERS = {
@@ -120,6 +120,32 @@ def get_relevant_pulse_threads(name: str, limit: int = 3) -> str:
         + "\n\nМожешь взять любую из этих мыслей и довести до конкретной задачи "
         "(это ничем не хуже находки в коде), или найти своё в реальном коде ниже.\n"
     )
+
+def get_backlog_pull_hint(name: str) -> str:
+    """Аналог get_relevant_pulse_threads выше, но источник —
+    workflows/product_backlog.py: идеи, которые кто-то (в том числе
+    workflows/domain_scan.py — дешёвый ежедневный обзор ВСЕЙ компании)
+    уже заметил по теме этого человека, но никто ещё не довёл до
+    задачи. Раньше при can_take_more()==False находка на этом же шаге
+    просто не рождалась вообще — теперь у неё есть шанс дожить до
+    следующего тика, когда слот освободится, вместо повторного
+    придумывания с нуля или полной потери."""
+    keywords = ALL_MATCH_KEYWORDS.get(name, [])
+    if not keywords:
+        return ""
+    candidate = get_pull_candidate(keywords)
+    if not candidate:
+        return ""
+    mark_pulled(candidate["id"])
+    return (
+        f"\n\nВ ОБЩЕМ БЭКЛОГЕ ИДЕЙ уже лежит нечто по твоей теме, ещё никем "
+        f"не доведено до задачи (источник: {candidate['origin']}):\n"
+        f"\"{candidate['title']}\" — {candidate['summary']}\n"
+        "Можешь проверить это на реальном коде ниже и довести до задачи "
+        "(это не хуже, чем найти своё с нуля), или найти что-то своё, если "
+        "это уже неактуально.\n"
+    )
+
 
 # "Молодые" — те же 19 человек, что описаны как "молодые гении" в
 # agents/global_geniuses.py (недавние выпускники) и
@@ -243,6 +269,7 @@ async def scout_and_propose(name: str) -> dict | None:
 {board_summary}
 {notebook_block}
 {get_relevant_pulse_threads(name)}
+{get_backlog_pull_hint(name)}
 Загляни в реальный код (git_log, grep_repo по bld-system и bld-panel)
 и найди ОДНУ конкретную проблему именно в твоей специализации — не
 общую, а такую, в которой ты реально эксперт.
@@ -355,12 +382,12 @@ async def run_individual_initiative(name: str | None = None) -> None:
 
     if not approved:
         update_task_status(task_id, "rejected", comment)
-        report = (
-            f"❌ ИНИЦИАТИВА ОТКЛОНЕНА ({verdict_source})\n\n"
-            f"{label}\nЗадача: {title}\n\nКомментарий: {comment}"
-        )
-        print(report)
-        send_telegram_report(report)
+        # РАНЬШЕ сюда же уходил send_telegram_report — по прямому
+        # запросу Валика убрано: отклонение идеи не готовая работа,
+        # это внутренний статус. Остаётся на task board (status=
+        # rejected, comment) и в личном дневнике инициатора — доступно
+        # по запросу, просто не летит уведомлением.
+        print(f"[{name}] Отклонено ({verdict_source}): {comment}")
         save_notebook_entry(name, f"Предложил '{title}' — отклонили ({comment[:150]}). Подумаю дальше.")
         return
 
@@ -383,16 +410,13 @@ async def run_individual_initiative(name: str | None = None) -> None:
     except Exception as e:
         print(f"[{name}] run_engineering_task упал с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-        error_report = f"❌ ИНДИВИДУАЛЬНАЯ ИНИЦИАТИВА УПАЛА С ОШИБКОЙ\n\n{label}\nЗадача: {title}\n\nОшибка: {e}"
-        print(error_report)
-        send_telegram_report(error_report)
+        notify_failed(f"{label}: {title}", str(e))
         return
     update_task_status(task_id, "done")
 
     full_report = f"🏁 ИНДИВИДУАЛЬНАЯ ИНИЦИАТИВА\n\n{label}\n{verdict_note}\n\n{report}"
-    brief = await compile_brief(full_report)
-    print(f"\n{brief}")
-    send_telegram_report(brief)
+    print(f"\n{full_report}")
+    notify_done(f"{label}: {title}")
     await curate_knowledge(f"Инициатива: {label}", full_report)
     save_notebook_entry(name, f"Реализовал '{title}' — довёл до кода. Дальше можно копать глубже в эту область или переключиться.")
 
@@ -438,13 +462,8 @@ async def main():
 
     for name, result in zip(names, results):
         if isinstance(result, Exception):
-            error_alert = (
-                f"🔴 СБОЙ В INDIVIDUAL INITIATIVE ({name})\n\n"
-                f"{type(result).__name__}: {result}\n\n"
-                "Проверь полный лог этого запуска в GitHub Actions для деталей."
-            )
-            print(error_alert)
-            send_telegram_report(error_alert)
+            print(f"[{name}] СБОЙ: {type(result).__name__}: {result}")
+            notify_failed(f"individual_initiative ({name})", f"{type(result).__name__}: {result}")
 
 
 if __name__ == "__main__":

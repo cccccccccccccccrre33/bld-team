@@ -42,8 +42,7 @@ import uuid
 
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.telegram_report import send_telegram_report
-from workflows._common import ask
+from workflows._common import ask, notify_done, notify_failed
 from workflows.board_meeting import assign_task_to_squad
 from workflows.squad_task import detect_relevant_squads, run_squad_relay, run_squad_task
 from workflows.task_board import add_task, is_duplicate, update_task_status
@@ -136,7 +135,8 @@ async def dispatch_goal(goal_text: str) -> str:
         # goal_id, ничего не дублируем.
         from workflows.gtm_initiative import run_gtm_initiative
         await run_gtm_initiative(task_hint=goal_text, goal_id=goal_id)
-        send_telegram_report(f"🎯 /goal (goal_id: {goal_id}) обработан через GTM-инициативу — детали в отчёте выше.")
+        # run_gtm_initiative уже сама шлёт notify_done()/notify_failed() —
+        # не дублируем отдельной строкой "обработан через GTM".
         return goal_id
 
     if goal_type == "new_system":
@@ -156,21 +156,17 @@ async def dispatch_goal(goal_text: str) -> str:
             f"Зарегистрирован как крупный проект '{project_id}' — пойдёт через "
             f"DIGEST → DESIGN → APPROVAL → IMPLEMENTATION.",
         )
-        report = (
-            f"🎯 /goal → зарегистрирован как крупный проект «{project['title']}» (id: {project_id}).\n"
-            f"Дальше пойдёт своим циклом (main_big_project_day.py / расписание Big Project Day) — "
-            f"согласование (APPROVAL) всё ещё впереди, ничего не реализуется без него.\n\n"
-            f"goal_id: {goal_id}"
-        )
-        print(report)
-        send_telegram_report(report)
+        print(f"🎯 /goal → зарегистрирован как крупный проект «{project['title']}» (id: {project_id}), goal_id: {goal_id}")
+        # РАНЬШЕ длинное объяснение цикла уходило в Telegram — убрано:
+        # это старт, не готовая работа. Итоговое завершение проекта
+        # уведомит само (workflows/big_projects.py::notify_done).
         return goal_id
 
     if goal_type == "cross_department":
         relevant = detect_relevant_squads(title) or detect_relevant_squads(goal_text)
         if len(relevant) >= 2:
             if is_duplicate(title):
-                send_telegram_report(f"🎯 /goal: похожая задача уже на доске — не дублирую.\n\nЦель: {title}\ngoal_id: {goal_id}")
+                notify_done(f"/goal: похожая задача уже на доске, не дублирую (goal_id: {goal_id})")
                 return goal_id
             zones = "+".join(relevant)
             task_id = add_task(title, f"relay:{zones}", status="in_progress",
@@ -178,11 +174,12 @@ async def dispatch_goal(goal_text: str) -> str:
             try:
                 relay_report = await run_squad_relay(title, order=relevant, task_id=task_id)
                 update_task_status(task_id, "done")
+                print(relay_report)
+                notify_done(f"/goal → эстафета {zones} (goal_id: {goal_id})")
             except Exception as e:
                 update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-                relay_report = f"❌ /goal (эстафета {zones}) упала с ошибкой: {e}"
-            print(relay_report)
-            send_telegram_report(f"🎯 /goal → эстафета {zones} завершена.\n\ngoal_id: {goal_id}")
+                print(f"❌ /goal (эстафета {zones}) упала с ошибкой: {e}")
+                notify_failed(f"/goal → эстафета {zones} (goal_id: {goal_id})", str(e))
             return goal_id
 
         # Триаж сказал cross_department, но detect_relevant_squads по
@@ -198,19 +195,19 @@ async def dispatch_goal(goal_text: str) -> str:
     # по цели от Валика, а не по инициативе отряда.
     target_squad = assign_task_to_squad(title)
     if is_duplicate(title):
-        send_telegram_report(f"🎯 /goal: похожая задача уже на доске — не дублирую.\n\nЦель: {title}\ngoal_id: {goal_id}")
+        notify_done(f"/goal: похожая задача уже на доске, не дублирую (goal_id: {goal_id})")
         return goal_id
 
     task_id = add_task(title, target_squad, status="in_progress", reason=reason, goal_id=goal_id)
     try:
         report = await run_squad_task(target_squad, title, task_id=task_id)
         update_task_status(task_id, "done")
+        print(report)
+        notify_done(f"/goal → {target_squad} (goal_id: {goal_id})")
     except Exception as e:
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-        report = f"❌ /goal упала с ошибкой: {e}"
-
-    print(report)
-    send_telegram_report(f"🎯 /goal → выполнено департаментом {target_squad}.\n\ngoal_id: {goal_id}")
+        print(f"❌ /goal упала с ошибкой: {e}")
+        notify_failed(f"/goal → {target_squad} (goal_id: {goal_id})", str(e))
     return goal_id
 
 

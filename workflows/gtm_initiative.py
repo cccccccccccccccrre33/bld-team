@@ -13,7 +13,7 @@ gtm_initiative.yml) — материалы полезны, только если
 from agents.gtm import build_gtm_lead
 from tools.repo_tools import clone_or_update_repos
 from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, record_participation
+from workflows._common import curate_knowledge, notify_done, record_participation
 from workflows.task_board import add_task, get_board_summary, update_task_status
 
 ESCALATION_MARKER = "ТРЕБУЕТ ТЕБЯ"
@@ -80,10 +80,11 @@ write_gtm_doc, заверши текстовым резюме.
     )
     full_report = header + report_text
 
-    brief = await compile_brief(full_report)
     print(f"\n[ПОЛНЫЙ ОТЧЁТ]\n{full_report}")
-    print(f"\n[КОРОТКО В TELEGRAM]\n{brief}")
-    send_telegram_report(brief)
+    if needs_founder:
+        send_telegram_report(f"🧑‍💻 GTM — требует твоего решения: {title}")
+    else:
+        notify_done(f"GTM: {title}")
     await curate_knowledge("Инициатива: GTM", full_report)
 
 

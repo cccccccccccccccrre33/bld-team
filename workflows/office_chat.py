@@ -23,7 +23,6 @@ from agents.office_chat import build_office_chat_team, CONTEXT_PREAMBLE
 from config.client_factory import get_chat_client
 from config.models import OFFICE_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
-from tools.telegram_report import send_telegram_report
 from workflows._common import ask, extract_messages, sync_repos_or_alert
 
 MAX_MESSAGES = 12  # это чат, не заседание — держим коротко
@@ -170,8 +169,7 @@ async def main():
         transcript = extract_messages(result.get_outputs())
     except Exception as e:
         print(f"GroupChat упал с ошибкой (известный edge-case библиотеки agent_framework): {e}")
-        alert = f"⚠️ Офисный чат не состоялся из-за сбоя оркестрации.\n\nЗатравка была: {spark_line}"
-        send_telegram_report(alert)
+        print(f"⚠️ Офисный чат не состоялся из-за сбоя оркестрации. Затравка была: {spark_line}")
         return
 
     if not any(m.role == "assistant" for m in transcript):
@@ -187,7 +185,9 @@ async def main():
     report = await compile_chat_report(starter_role, spark_line, transcript)
 
     print(f"\n{'=' * 60}\n{report}")
-    send_telegram_report(report)
+    # РАНЬШЕ уходило в Telegram — убрано по запросу Валика: это
+    # неформальная болтовня в офисном чате, не готовая работа. Остаётся
+    # в логе только.
 
 
 if __name__ == "__main__":

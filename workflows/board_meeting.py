@@ -19,17 +19,17 @@ from agents.board import build_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
 from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
-from tools.telegram_report import send_telegram_report
 from workflows._common import (
     run_free_conversation,
     ask,
-    compile_brief,
     curate_knowledge,
     extract_messages,
     extract_next_step,
     load_recent_topics,
     load_rotation_turn,
     looks_like_meta_complaint,
+    notify_done,
+    notify_failed,
     save_rotation_turn,
     save_topic,
     sync_repos_or_alert,
@@ -278,14 +278,13 @@ async def main():
         assistant_messages = []
 
     if not assistant_messages:
-        alert = (
+        print(
             "⚠️ ОБСУЖДЕНИЕ НЕ СОСТОЯЛОСЬ (баг оркестрации GroupChat), "
-            "но тема конкретная — передаём её напрямую в инженерную работу, "
-            "минуя протокол заседания.\n\n"
-            f"Тема: {agenda}"
+            f"но тема конкретная — передаём её напрямую в инженерную работу: {agenda}"
         )
-        print(alert)
-        send_telegram_report(alert)
+        # РАНЬШЕ это тоже уходило в Telegram — убрано: диагностика сбоя
+        # оркестрации, не блокирует работу (см. ниже она продолжается
+        # как обычно), не готовая работа сама по себе.
 
         # Тема уже сформулирована agenda_setter'ом с реальным доступом к
         # коду — она сама по себе достаточно конкретна, чтобы стать
@@ -295,16 +294,14 @@ async def main():
         if len(relevant) >= 2:
             print(f"Тема затрагивает {len(relevant)} зон(ы) ({'+'.join(relevant)}) — отряды работают эстафетой...")
             relay_report = await run_squad_relay(agenda, order=relevant)
-            brief = await compile_brief(relay_report)
-            send_telegram_report(brief)
+            notify_done(agenda[:150])
             await curate_knowledge("Совет директоров (без обсуждения) / Эстафета", relay_report)
         else:
             target_squad = assign_task_to_squad(agenda)
             print(f"Тема уходит напрямую в {SQUADS[target_squad]['label']}...")
             squad_reports = await dispatch_squads({target_squad: agenda})
             for squad_report in squad_reports:
-                brief = await compile_brief(squad_report)
-                send_telegram_report(brief)
+                notify_done(agenda[:150])
                 await curate_knowledge("Совет директоров (без обсуждения) / Инженерный отряд", squad_report)
         return
 
@@ -320,9 +317,10 @@ async def main():
     print("\n" + "=" * 80)
     print("ОТЧЁТ:\n")
     print(report)
-
-    brief = await compile_brief(report, context_hint="заседание совета директоров")
-    send_telegram_report(brief)
+    # Протокол заседания — не готовая работа. Убрано из Telegram по
+    # запросу Валика. Полный текст report передаётся дальше в
+    # curate_knowledge() из каждой ветки ниже (проект/эстафета/отряд) —
+    # не теряется, просто не летит отдельным уведомлением здесь.
 
     # РАНЬШЕ: единственный путь из обсуждения совета в реализацию —
     # extract_next_step() всегда извлекает ОДНУ инженерную задачу, даже
@@ -352,7 +350,9 @@ async def main():
             f"см. main_big_project_day.py / расписание Big Project Day."
         )
         print(note)
-        send_telegram_report(note)
+        # РАНЬШЕ уходило в Telegram — убрано: регистрация проекта это
+        # старт, не готовая работа. Итоговое завершение проекта
+        # (workflows/big_projects.py) по-прежнему уведомляет.
         await curate_knowledge("Совет директоров / Новый крупный проект", report + "\n\n" + note)
         return
 
@@ -366,15 +366,8 @@ async def main():
     print(f"Задача: {task}")
 
     if looks_like_meta_complaint(task):
-        alert = (
-            "⚠️ ЗАДАЧА ДЛЯ ИНЖЕНЕРНОЙ КОМАНДЫ ВЫГЛЯДИТ НЕОСМЫСЛЕННОЙ — пропущена\n\n"
-            f"Извлечённый 'следующий шаг': {task}\n\n"
-            "Похоже на жалобу модели на нехватку данных, а не на реальную "
-            "задачу (например, отчёт заседания получился пустым/битым). "
-            "Инженерная команда НЕ запущена — реализовывать тут нечего."
-        )
-        print(alert)
-        send_telegram_report(alert)
+        notify_failed("Заседание совета директоров: извлечённая задача бессмысленна", task[:150])
+        print("Инженерная команда НЕ запущена — реализовывать тут нечего.")
         return
 
     relevant = detect_relevant_squads(task)
@@ -395,14 +388,13 @@ async def main():
         try:
             relay_report = await run_squad_relay(task, order=relevant)
             board_update_task_status(relay_task_id, "done")
+            print(f"\n{relay_report}")
+            notify_done(task[:150])
         except Exception as e:
             board_update_task_status(relay_task_id, "rejected", f"Упало с необработанным исключением: {e}")
-            relay_report = (
-                f"❌ ЭСТАФЕТА ОТРЯДОВ ПО ИТОГАМ СОВЕТА ДИРЕКТОРОВ УПАЛА С ОШИБКОЙ\n\n"
-                f"Задача: {task}\n\nОшибка: {e}"
-            )
-        print(f"\n{relay_report}")
-        send_telegram_report(relay_report)
+            relay_report = f"❌ ЭСТАФЕТА ОТРЯДОВ ПО ИТОГАМ СОВЕТА ДИРЕКТОРОВ УПАЛА С ОШИБКОЙ\n\nЗадача: {task}\n\nОшибка: {e}"
+            print(relay_report)
+            notify_failed(task[:150], str(e))
         await curate_knowledge("Совет директоров / Эстафета отрядов", report + "\n\n" + relay_report)
         return
 
@@ -446,9 +438,11 @@ async def main():
         try:
             rep = await run_squad_task(target_squad, task)
             board_update_task_status(task_id, "done")
+            notify_done(task[:150])
             return rep
         except Exception as e:
             board_update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
+            notify_failed(task[:150], str(e))
             return (
                 f"❌ ИНЖЕНЕРНАЯ ЗАДАЧА ОТ СОВЕТА ДИРЕКТОРОВ УПАЛА С ОШИБКОЙ\n\n"
                 f"Отряд: {SQUADS[target_squad]['label']}\nЗадача: {task}\n\nОшибка: {e}"
@@ -472,7 +466,8 @@ async def main():
     main_report = results[0]  # run_squad_initiative ничего не возвращает — отчитывается сама
 
     print(f"\n{main_report}")
-    send_telegram_report(main_report)
+    # notify_done()/notify_failed() уже отправлены внутри _run_target()
+    # выше — здесь только фиксируем в вики, не дублируем уведомление.
     await curate_knowledge("Совет директоров / Инженерный отряд", report + "\n\n" + main_report)
 
 

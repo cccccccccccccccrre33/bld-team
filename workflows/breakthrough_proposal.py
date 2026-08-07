@@ -32,8 +32,7 @@ import random
 from agents.board import build_board
 from agents.ceo import build_ceo
 from agents.engineering_fellows import FELLOW_BUILDERS, FELLOW_LABELS
-from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, fair_sample, record_participation, sync_repos_or_alert
+from workflows._common import curate_knowledge, fair_sample, notify_done, notify_failed, record_participation, sync_repos_or_alert
 from workflows.engineering_task import run_engineering_task
 from workflows.task_board import add_task, get_board_summary, is_duplicate, update_task_status
 
@@ -175,8 +174,11 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
         f"ФИЛЬТР:\n{filter_report}\n\n"
         f"{'✅ ОДОБРЕНО' if approved else '❌ ОТКЛОНЕНО'}"
     )
-    verdict_brief = await compile_brief(verdict_msg, context_hint="вердикт фильтра Breakthrough Proposal (Chief Scientist + Chief Architect + CEO)")
-    send_telegram_report(verdict_brief)
+    print(verdict_msg)
+    # Вердикт фильтра сам по себе — не готовая работа, убрано из
+    # Telegram по запросу Валика. Если одобрено — ниже придёт
+    # notify_done() с реальным результатом; если нет — остаётся в
+    # task board (status=rejected) и в вики.
 
     task_id = add_task(proposal["idea"], f"fellow:{fellow_key}", status="proposed", reason=proposal.get("reason", ""))
 
@@ -204,7 +206,7 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
     try:
         # breakthrough_proposal.yml: timeout-minutes: 25 (1500с), из
         # которых фильтр предложения + сбор команды уже съели часть
-        # до этой точки. 1100с оставляет запас на compile_brief/отчёт.
+        # до этой точки.
         report = await run_engineering_task(
             proposal["idea"],
             repo_name="bld-system",  # Fellows работают ТОЛЬКО с bld-system, никогда с bld-panel
@@ -216,15 +218,12 @@ async def run_breakthrough_cycle(fellow_key: str | None = None) -> str | None:
     except Exception as e:
         print(f"[{fellow_key}] run_engineering_task упал с исключением: {e}")
         update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-        error_report = f"❌ BREAKTHROUGH УПАЛ С ОШИБКОЙ — {label}\n\nИдея: {proposal['idea']}\n\nОшибка: {e}"
-        print(error_report)
-        send_telegram_report(error_report)
-        return error_report
+        notify_failed(f"Breakthrough Proposal — {label}", str(e))
+        return f"❌ Упало с ошибкой: {e}"
     update_task_status(task_id, "done")
 
     full_report = f"🚀 BREAKTHROUGH РЕАЛИЗОВАН — {label}\n\n{report}"
-    brief = await compile_brief(full_report, context_hint="реализация Breakthrough Proposal")
-    send_telegram_report(brief)
+    notify_done(f"Breakthrough — {label}: {proposal['idea'][:120]}")
     await curate_knowledge(f"Breakthrough Proposal реализован: {label}", f"{verdict_msg}\n\n{full_report}")
     return full_report
 

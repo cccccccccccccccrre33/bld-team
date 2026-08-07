@@ -52,8 +52,7 @@ from config.models import (
     SPECIALIST_MODEL_ASSIGNMENTS,
 )
 from tools.repo_tools import commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
-from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, fair_sample, safe_agent_run, sync_repos_or_alert
+from workflows._common import curate_knowledge, fair_sample, notify_done, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 
 # РАНЬШЕ этот словарь не включал Global Elite I-VI вообще (только
@@ -538,10 +537,7 @@ async def main():
     report = await run_engineering_task(task)
     print(f"\n{report}")
 
-    brief = await compile_brief(report)
-    print(f"\n[КОРОТКО]\n{brief}")
-    send_telegram_report(brief)
-
+    notify_done(task[:150])
     await curate_knowledge("Инженерная задача", report)
 
 

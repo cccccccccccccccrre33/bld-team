@@ -309,15 +309,9 @@ def reconcile_stale_tasks(stale_hours: int = STALE_HOURS, notify: bool = True) -
 
 
 def _notify_stale(stale: list[dict], stale_hours: int) -> None:
-    lines = [f"⏱️ АВТО-РАЗМОРОЗКА ЗАВИСШИХ ЗАДАЧ ({len(stale)} шт., висели дольше {stale_hours}ч):"]
+    lines = [f"⏱️ Авто-разморозка: {len(stale)} зависших дольше {stale_hours}ч → timed_out"]
     for t in stale:
-        lines.append(f"  [{t.get('squad', '?')}] ({t['status']} → timed_out, {t['_age_hours']:.1f}ч): {t.get('title', '')[:100]}")
-    lines.append(
-        "\nЭто НЕ отказ CTO — просто выполнявший процесс где-то оборвался "
-        "(чаще всего таймаут GitHub Actions job), слот освобождён автоматически. "
-        "Если среди них есть in_progress — стоит глянуть ветку в репозитории, "
-        "не осталась ли она в недописанном состоянии, прежде чем переоткрывать тему."
-    )
+        lines.append(f"  [{t.get('squad', '?')}] {t.get('title', '')[:100]}")
     # Импорт нарочно ленивый и обёрнут целиком (не только сам вызов):
     # workflows/task_board.py и особенно tools/unstick_task_board.py
     # (у него в .github/workflows/unstick_task_board.yml нет шага pip

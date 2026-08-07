@@ -26,8 +26,7 @@ import random
 from agents.ceo import build_ceo
 from agents.roster import build_full_roster
 from agents.team import build_team
-from tools.telegram_report import send_telegram_report
-from workflows._common import compile_brief, curate_knowledge, fair_sample, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
+from workflows._common import curate_knowledge, fair_sample, notify_done, notify_failed, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
 from workflows.research_backlog import add_entry, format_entry_for_prompt, get_revisit_candidate, mark_revisited
 from workflows.task_board import add_task
 
@@ -143,7 +142,6 @@ async def run_chevruta() -> str:
     if not topic:
         msg = f"⚠️ Хеврута не состоялась — вся группа ({', '.join(group_names)}) временно недоступна."
         print(msg)
-        send_telegram_report(msg)
         return msg
     print(f"\nТема ({opener_name}):\n{topic}\n{'=' * 60}")
 
@@ -165,8 +163,10 @@ async def run_chevruta() -> str:
         f"РАЗГОВОР:\n{transcript_summary[:2500]}\n\n"
         f"{mentor_label}:\n{reaction}"
     )
-    brief = await compile_brief(report, context_hint="хеврута — свободное обсуждение в паре/тройке")
-    send_telegram_report(brief)
+    print(report)
+    # РАНЬШЕ уходило в Telegram — убрано: свободное обсуждение, не
+    # готовая работа. Полный текст в вики через curate_knowledge ниже
+    # (в любой из веток — и при эскалации, и без неё).
 
     # Реакция кумира (CTO или CEO — MENTOR_BUILDERS) с "В РЕАЛИЗАЦИЮ" —
     # это САМО ПО СЕБЕ старшее одобрение, отдельного cto_approval() не
@@ -201,14 +201,13 @@ async def run_chevruta() -> str:
         except Exception as e:
             print(f"[chevruta] run_engineering_task упал с исключением: {e}")
             update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
-            send_telegram_report(f"❌ Реализация по итогам хевруты ({', '.join(group_names)}) упала с ошибкой: {e}")
+            notify_failed(f"Хеврута ({', '.join(group_names)}): {topic[:100]}", str(e))
             return f"{report}\n\n❌ Реализация упала с ошибкой: {e}"
 
         update_task_status(task_id, "done")
 
         full = f"👷 РЕАЛИЗАЦИЯ ПО ИТОГАМ ХЕВРУТЫ ({mentor_label} одобрил)\n\n{engineering_report}"
-        engineering_brief = await compile_brief(full, context_hint="реализация по итогам хевруты")
-        send_telegram_report(engineering_brief)
+        notify_done(topic[:150])
         await curate_knowledge(f"Хеврута → реализовано: {', '.join(group_names)}", f"{report}\n\n{full}")
         if backlog_candidate:
             mark_revisited(backlog_candidate["id"], note="Доведено до реализации через хевруту.", close=True)

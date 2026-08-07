@@ -20,7 +20,6 @@ from agents.specialists import SPECIALIST_LABELS
 from agents.roster import build_full_roster
 from config.models import EXEC_MODEL_ASSIGNMENTS
 from config.client_factory import get_chat_client
-from tools.telegram_report import send_telegram_report
 from workflows._common import ask, fair_sample, record_participation, safe_agent_run
 
 MAX_EXCHANGES = 5  # вопрос-ответ пар — это разговор, не допрос
@@ -122,9 +121,7 @@ async def main():
     transcript = await run_interview(hr_agent, interviewee_agent, interviewee_name)
 
     if len(transcript) < 2:
-        warning = f"⚠️ HR 1-на-1 с {interviewee_name} не состоялся — модели временно недоступны."
-        print(warning)
-        send_telegram_report(warning)
+        print(f"⚠️ HR 1-на-1 с {interviewee_name} не состоялся — модели временно недоступны.")
         return
 
     for msg in transcript:
@@ -134,8 +131,8 @@ async def main():
     print("\n" + "=" * 60)
     note = await compile_hr_note(interviewee_name, transcript)
     print(note)
-
-    send_telegram_report(note)
+    # РАНЬШЕ уходило в Telegram — убрано по запросу Валика: это
+    # обычный чекин-разговор, не готовая работа. Остаётся в логе.
 
 
 if __name__ == "__main__":
