@@ -1,0 +1,64 @@
+name: Domain Scan
+
+on:
+  schedule:
+    # Раз в день. Каждый шард — своя параллельная GitHub Actions job
+    # (своя виртуалка) через matrix ниже, так что реальный wall-clock
+    # прогона ~ времени ОДНОГО шарда (~102 человека при 6 шардах), а не
+    # всех 612 последовательно. Не чаще раза в день — это дешёвый слой
+    # "что заметил в своей области", не замена основным циклам
+    # (individual_initiative и т.п.), которым и так есть смысл идти
+    # чаще.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      shard_count:
+        description: 'На сколько шардов делить (по умолчанию 6)'
+        required: false
+        default: '6'
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      # 6 шардов — компромиссный дефолт для ~612 человек (~102 на
+      # шард). Если MAX_CONCURRENT_TASKS/бюджет позволяют — можно
+      # поднять до 8-12 через vars.DOMAIN_SCAN_SHARD_COUNT ниже, без
+      # правки этого файла. ВАЖНО: matrix.shard должен совпадать по
+      # длине с shard_count, который получают сами шарды через
+      # SHARD_COUNT — если меняешь одно, меняй и другое.
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run domain scan shard
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_COUNT: '6'
+        run: |
+          python main_domain_scan.py
