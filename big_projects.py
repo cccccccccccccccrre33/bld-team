@@ -220,9 +220,10 @@ def pick_relevant_group(roster: dict, keywords: list[str], k: int = 3) -> list[s
     from agents.expansion_geniuses import SPECIALTY_KEYWORDS as EXP_KW
     from agents.global_geniuses import SPECIALTY_KEYWORDS as GEN_KW
     from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KW
+    from agents.soviet_engineering import SPECIALTY_KEYWORDS as SOVIET_KW
     from agents.specialists import SPECIALTY_KEYWORDS as SPEC_KW
 
-    all_kw = {**GEN_KW, **SPEC_KW, **GROWTH_KW, **EXP_KW, **ARCH_KW, **FELLOW_KW}
+    all_kw = {**GEN_KW, **SPEC_KW, **GROWTH_KW, **EXP_KW, **ARCH_KW, **FELLOW_KW, **SOVIET_KW}
     matched = [name for name, kws in all_kw.items() if name in roster and any(kw in " ".join(keywords).lower() for kw in kws)]
 
     if len(matched) >= k:
