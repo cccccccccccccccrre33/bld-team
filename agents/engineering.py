@@ -133,6 +133,7 @@ def build_specialist_pool() -> dict:
     from agents.global_elite_6 import ELITE6_BUILDERS
     from agents.global_geniuses import GENIUS_BUILDERS
     from agents.growth_team import GROWTH_BUILDERS
+    from agents.soviet_engineering import SOVIET_ENGINEERING_BUILDERS
     from agents.specialists import SPECIALIST_BUILDERS
 
     pool = {name: builder(can_write=True) for name, builder in GENIUS_BUILDERS.items()}
@@ -147,6 +148,7 @@ def build_specialist_pool() -> dict:
     pool.update({name: builder(can_write=True) for name, builder in ELITE4_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in ELITE5_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in ELITE6_BUILDERS.items()})
+    pool.update({name: builder(can_write=True) for name, builder in SOVIET_ENGINEERING_BUILDERS.items()})
     return pool
 
 
