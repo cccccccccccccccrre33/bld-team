@@ -138,6 +138,13 @@ Everything below is additive — none of it requires touching the core discussio
   instead of four. This part is tuned for the author's own model catalog; expect to
   override role→model assignments for your own providers (documented in
   `config/models.py` and `.env.example`).
+- **Go from "one product" to "a portfolio"** — `workflows/big_projects.py::register_project(..., repo=...)`
+  lets a "20% time" project target a brand-new repository (added to `TARGET_REPOS`) instead
+  of the founder's existing codebase, with its own facets (design/interface/backend), staffed
+  ad hoc from the full roster rather than the fixed departments in `agents/squads.py` (those
+  stay scoped to the founder's original product). `workflows/task_board.py`'s concurrency limit
+  is scoped per repository/product, not company-wide, so a new product's work never queues
+  behind the original one, or vice versa — see the docstrings in both files for the reasoning.
 
 ## Honest limitations
 
