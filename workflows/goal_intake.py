@@ -12,7 +12,10 @@ big_projects, gtm_initiative, board_meeting) запускались незави
 ЭТОТ МОДУЛЬ НЕ ЗАПУСКАЕТ ОТДЕЛЬНЫЙ ПАРАЛЛЕЛЬНЫЙ ДВИЖОК — это тонкий
 диспетчерский слой поверх уже работающих циклов:
 1. Классифицирует цель (triage_goal) — bugfix/feature/cross_department/
-   new_system/gtm.
+   new_system/gtm. Для new_system дополнительно решает: это доработка
+   внутри существующего BLD, или отдельный самостоятельный продукт
+   цифровизации стройки (свой репозиторий) — Валик как CDTO может
+   ставить цели не только про BLD (см. context/company_context.md).
 2. Заводит подзадачу(и) на общей доске (workflows/task_board.py) с
    общим goal_id — так позже видно, что относится к этой цели, даже
    если она разъехалась по нескольким департаментам.
@@ -76,7 +79,8 @@ async def triage_goal(goal_text: str) -> dict:
     run_gtm_initiative)."""
     client = get_chat_client(BOARD_MODEL_ASSIGNMENTS.get("agenda_setter", "gpt-5.2"))
     prompt = f"""
-Цель от Валика (основателя BLD System): {goal_text}
+Цель от Валика (CDTO — цифровизация стройки; BLD System — основной,
+но не единственный продукт в портфеле): {goal_text}
 
 Классифицируй эту цель РОВНО в одну из категорий:
 
@@ -92,16 +96,27 @@ new_system — построить что-то принципиально нов�
 gtm — про продажи, ценообразование, привлечение клиентов, маркетинг —
     не техническая задача вообще.
 
+Если ТИП = new_system, реши ДОПОЛНИТЕЛЬНО: это доработка/подсистема
+внутри существующего BLD (использует его данные/пользователей/бота) —
+тогда РЕПО оставь пустым; или это ОТДЕЛЬНЫЙ, самостоятельный продукт
+цифровизации стройки (свой интерфейс, свой бэкенд, не довесок к BLD,
+даже если тоже про стройку) — тогда предложи короткий английский
+snake_case слаг под новый репозиторий (например "smeta-tracker",
+"tender-radar") в РЕПО. Для всех остальных типов РЕПО всегда пустое.
+
 Ответь строго в формате:
 ТИП: [bugfix|feature|cross_department|new_system|gtm]
 НАЗВАНИЕ: [одна строка — конкретная формулировка задачи/проекта]
 ОБОСНОВАНИЕ: [1-2 предложения — почему именно эта категория]
+РЕПО: [snake_case слаг нового репозитория, ТОЛЬКО если это отдельный
+    продукт вне BLD; иначе оставь строку пустой после двоеточия]
 """
     response = await ask(client, prompt)
 
     goal_type = "feature"
     title = goal_text.strip()
     reason = ""
+    repo = ""
     for line in response.split("\n"):
         if line.upper().startswith("ТИП:"):
             raw = line.split(":", 1)[-1].strip().lower()
@@ -113,8 +128,11 @@ gtm — про продажи, ценообразование, привлече�
             title = line.split(":", 1)[-1].strip() or title
         elif line.upper().startswith("ОБОСНОВАНИЕ:"):
             reason = line.split(":", 1)[-1].strip()
+        elif line.upper().startswith("РЕПО:"):
+            raw_repo = line.split(":", 1)[-1].strip()
+            repo = re.sub(r"[^a-z0-9\-]+", "-", raw_repo.lower()).strip("-")
 
-    return {"type": goal_type, "title": title, "reason": reason}
+    return {"type": goal_type, "title": title, "reason": reason, "repo": repo or None}
 
 
 async def dispatch_goal(goal_text: str) -> str:
@@ -148,15 +166,17 @@ async def dispatch_goal(goal_text: str) -> str:
         from workflows.big_projects import register_project
 
         project_id = goal_id.replace("goal-", "project-")
+        repo = triage.get("repo")  # None = доработка внутри BLD; иначе — отдельный продукт, свой репозиторий
         task_id = add_task(title, f"project:{project_id}", status="proposed",
-                            reason=reason, goal_id=goal_id)
-        project = await register_project(project_id, title, goal_text)
+                            reason=reason, goal_id=goal_id, repo=repo)
+        project = await register_project(project_id, title, goal_text, repo=repo)
+        repo_note = f", отдельный продукт (репозиторий: {repo})" if repo else " (в рамках существующего BLD)"
         update_task_status(
             task_id, "in_progress",
-            f"Зарегистрирован как крупный проект '{project_id}' — пойдёт через "
+            f"Зарегистрирован как крупный проект '{project_id}'{repo_note} — пойдёт через "
             f"DIGEST → DESIGN → APPROVAL → IMPLEMENTATION.",
         )
-        print(f"🎯 /goal → зарегистрирован как крупный проект «{project['title']}» (id: {project_id}), goal_id: {goal_id}")
+        print(f"🎯 /goal → зарегистрирован как крупный проект «{project['title']}» (id: {project_id}){repo_note}, goal_id: {goal_id}")
         # РАНЬШЕ длинное объяснение цикла уходило в Telegram — убрано:
         # это старт, не готовая работа. Итоговое завершение проекта
         # уведомит само (workflows/big_projects.py::notify_done).

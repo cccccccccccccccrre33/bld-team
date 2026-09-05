@@ -13,9 +13,17 @@
 - brief — исходное описание/бриф (то, что дал Валик).
 - phase — DIGEST (осмысление) -> DESIGN (варианты и дизайн-решения) ->
   APPROVAL (лёгкая бюрократия — согласование) -> IMPLEMENTATION
-  (реализация по частям, может затрагивать и bld-system, и bld-panel —
-  в отличие от Fellows, этот механизм НЕ ограничен одним репозиторием)
-  -> DONE.
+  (реализация по частям) -> DONE.
+- repo — None = проект внутри существующего BLD (может затрагивать и
+  bld-system, и bld-panel — этот механизм НЕ ограничен одним
+  репозиторием). Имя из TARGET_REPOS (tools/repo_tools.py::REPOS) =
+  это ОТДЕЛЬНЫЙ, самостоятельный продукт цифровизации стройки (свой
+  репозиторий, свой интерфейс, свой бэкенд/движок) — BLD в этом случае
+  просто один из портфеля продуктов, не единственная точка приложения
+  усилий (см. context/company_context.md — Валик как CDTO, не только
+  основатель одного продукта). Задачи такого проекта считаются в СВОЁМ
+  scope у workflows/task_board.py::MAX_CONCURRENT — не делят ёмкость с
+  BLD и с другими отдельными продуктами.
 - log — накопленная история обсуждений/решений по фазам.
 - decisions — зафиксированные дизайн-решения (что решили и почему).
 
@@ -41,6 +49,7 @@ from agents.roster import build_full_roster
 from agents.team import build_team
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
+from tools.repo_tools import REPOS
 from workflows._common import ask, curate_knowledge, fair_sample, notify_done, notify_failed, record_participation, run_free_conversation, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.task_board import add_task, is_duplicate, update_task_status
@@ -146,6 +155,14 @@ def load_project(project_id: str) -> dict:
                 legacy = PROJECTS_REGISTRY.get(project_id, {})
                 data.setdefault("brief", legacy.get("brief", ""))
                 data.setdefault("facets", legacy.get("facets", []))
+            # "repo" — добавлено вместе с генерализацией на отдельные
+            # продукты (не только фичи внутри bld-system/bld-panel).
+            # Файлы проектов, сохранённые ДО этого изменения, не содержат
+            # ключ вообще — setdefault(None) даёт тот же эффект, что и
+            # раньше: run_project_day() ниже трактует repo=None как
+            # "легаси-проект внутри BLD", ничего не меняя в поведении
+            # уже идущих проектов вроде seasonal_mode.
+            data.setdefault("repo", PROJECTS_REGISTRY.get(project_id, {}).get("repo"))
             return data
         except Exception:
             pass
@@ -164,6 +181,10 @@ def load_project(project_id: str) -> dict:
         "log": [],
         "decisions": [],
         "created": datetime.now().isoformat(),
+        # None = проект внутри существующих репозиториев BLD (как все
+        # проекты, заданные руками в PROJECTS_REGISTRY на сегодня) —
+        # см. register_project() и run_project_day() ниже про repo != None.
+        "repo": reg.get("repo"),
     }
 
 
@@ -354,20 +375,55 @@ async def run_project_day(project_id: str) -> None:
             notify_done(f"Проект «{project['title']}»")
 
     if project["phase"] == "IMPLEMENTATION":
+        project_repo = project.get("repo")
+
+        # Проект — отдельный продукт (repo указан явно), но Валик ещё
+        # физически не создал репозиторий / не прописал его в
+        # TARGET_REPOS (tools/repo_tools.py::REPOS читается из .env один
+        # раз при старте процесса). Раньше такого случая не существовало
+        # вообще (все проекты жили в уже существующих bld-system/
+        # bld-panel) — честный стоп с needs_founder_decision, а не
+        # попытка писать код в несуществующий репозиторий и не молчаливый
+        # фолбэк на BLD, который перепутал бы продукты.
+        if project_repo and project_repo not in REPOS:
+            print(f"[{project_id}] Репозиторий '{project_repo}' ещё не в TARGET_REPOS — реализация ждёт.")
+            task_id = add_task(
+                f"Нужен репозиторий для продукта «{project['title']}»", f"project:{project_id}",
+                status="needs_founder_decision", repo=project_repo,
+                reason=f"Дизайн готов (фаза APPROVAL пройдена), но '{project_repo}' отсутствует в TARGET_REPOS.",
+                how=f"Создай пустой репозиторий на GitHub и добавь '{project_repo}=github.com/.../{project_repo}.git' "
+                    "в TARGET_REPOS (.env или GitHub Actions vars) — дальше команда сама продолжит реализацию.",
+            )
+            notify_done(f"Проект «{project['title']}» — 🧑‍💻 ТРЕБУЕТ ТЕБЯ: нужен репозиторий '{project_repo}' в TARGET_REPOS")
+            return
+
         print(f"[{project_id}] Фаза реализации — запускаем инженерные задачи по частям...")
         from workflows.engineering_task import run_engineering_task
 
         design_summary = "\n".join(d["summary"] for d in project["decisions"])
         client = get_chat_client(BOARD_MODEL_ASSIGNMENTS.get("agenda_setter", "gpt-5.2"))
+        if project_repo:
+            # Отдельный продукт — весь код идёт в ОДИН его репозиторий
+            # (не "bld-system или bld-panel" — той развилки здесь просто
+            # нет), но части всё равно могут быть разными гранями:
+            # интерфейс, бэкенд/мотор, доменная логика.
+            repo_instruction = (
+                f"Всё в рамках ОДНОГО репозитория '{project_repo}' — это отдельный, самостоятельный "
+                "продукт, не доработка BLD System. Части могут закрывать разные грани (интерфейс, "
+                "бэкенд/движок, доменную логику), но репозиторий один и тот же."
+            )
+        else:
+            repo_instruction = (
+                "Может быть и backend (bld-system), и панель (bld-panel) — не ограничивайся одним "
+                "репозиторием."
+            )
         parts_prompt = f"""
 Проект: {project['title']}
 Согласованный дизайн: {design_summary}
 
 Разбей реализацию на 1-3 конкретные технические задачи (каждая —
-одно предложение, реализуемое отдельно). Может быть и backend
-(bld-system), и панель (bld-panel) — не ограничивайся одним
-репозиторием. Ответь списком, каждая задача с новой строки, без
-нумерации и лишнего текста.
+одно предложение, реализуемое отдельно). {repo_instruction} Ответь
+списком, каждая задача с новой строки, без нумерации и лишнего текста.
 """
         parts_response = await ask(client, parts_prompt)
         parts = [p.strip("- ").strip() for p in parts_response.split("\n") if p.strip() and len(p.strip()) > 10]
@@ -375,7 +431,13 @@ async def run_project_day(project_id: str) -> None:
         for part in parts[:3]:
             if is_duplicate(part):
                 continue
-            task_id = add_task(part, f"project:{project_id}", status="in_progress", reason=design_summary[:200])
+            # repo=project_repo — задачи отдельного продукта считаются в
+            # СВОЁМ scope у workflows/task_board.py::MAX_CONCURRENT, не в
+            # общем пуле BLD-отрядов (см. докстринг MAX_CONCURRENT там).
+            # Для легаси-проектов (project_repo=None) поведение то же,
+            # что было раньше.
+            task_id = add_task(part, f"project:{project_id}", status="in_progress",
+                                reason=design_summary[:200], repo=project_repo)
             try:
                 # big_project_day.yml: timeout-minutes: 45 (2700с), но
                 # здесь до 3 частей выполняются ПОСЛЕДОВАТЕЛЬНО в одном
@@ -384,7 +446,13 @@ async def run_project_day(project_id: str) -> None:
                 # между ними, а не отдавать каждой части почти весь час.
                 # 700с × 3 = 2100с, оставляет ~600с на планирование
                 # частей (parts_prompt) и финальные отчёты/telegram.
-                report = await run_engineering_task(part, soft_timeout_seconds=700)
+                # repo_name=project_repo передаётся ЯВНО для отдельных
+                # продуктов — иначе run_engineering_task() откатился бы
+                # на guess_repo(), которая знает только "bld-system"/
+                # "bld-panel" и никогда не попадёт в новый репозиторий.
+                # Для легаси-проектов (None) поведение не меняется —
+                # guess_repo() по тексту части, как и раньше.
+                report = await run_engineering_task(part, repo_name=project_repo, soft_timeout_seconds=700)
             except Exception as e:
                 print(f"[{project_id}] run_engineering_task упал с исключением на части '{part}': {e}")
                 update_task_status(task_id, "rejected", f"Упало с необработанным исключением: {e}")
@@ -454,7 +522,8 @@ async def generate_facets_from_brief(title: str, brief: str) -> list[list]:
 
 
 async def register_project(project_id: str, title: str, brief: str,
-                            facets: list[list] | None = None) -> dict:
+                            facets: list[list] | None = None,
+                            repo: str | None = None) -> dict:
     """Регистрирует НОВЫЙ крупный проект в .state/projects/{project_id}.json
     — БЕЗ правки PROJECTS_REGISTRY в коде. Это и есть закрытие Дыры №2
     (см. ТЗ): раньше единственный способ завести проект — вручную
@@ -469,6 +538,26 @@ async def register_project(project_id: str, title: str, brief: str,
     диске — возвращает существующий ПРОЕКТ БЕЗ ИЗМЕНЕНИЙ (идемпотентно;
     не даёт повторной регистрацией случайно затереть прогресс уже
     идущего проекта).
+
+    repo — НОВОЕ: если проект — это не фича внутри BLD, а отдельный,
+    самостоятельный продукт (своя цифровизация чего-то конкретного на
+    стройке, не довесок к bld-system/bld-panel), передай сюда имя
+    репозитория, под которым он будет числиться в TARGET_REPOS
+    (tools/repo_tools.py::REPOS) — например "hvylia" или новый
+    репозиторий под конкретную идею. None (по умолчанию) — старое
+    поведение без изменений: проект живёт внутри существующих
+    репозиториев BLD, реализация идёт через guess_repo()-эвристику по
+    тексту каждой части (workflows/engineering_task.py), как и раньше.
+
+    Если repo указан, но такого ключа ЕЩЁ нет в TARGET_REPOS (Валик
+    физически не создал репозиторий и не прописал его в .env/GitHub
+    Actions vars) — это НЕ ошибка регистрации: DIGEST/DESIGN/APPROVAL
+    идут как обычно (это просто обсуждение, коду репозиторий пока не
+    нужен), а вот при попытке войти в IMPLEMENTATION run_project_day()
+    честно остановится и заведёт задачу со статусом
+    "needs_founder_decision" — "нужен репозиторий, это твоё действие",
+    а не будет молча писать код куда попало или притворяться, что
+    репозиторий появился сам.
 
     ВАЖНО: регистрация НЕ обходит согласование — новый проект стартует
     с phase="DIGEST", реализация (IMPLEMENTATION) по-прежнему наступит
@@ -494,9 +583,11 @@ async def register_project(project_id: str, title: str, brief: str,
         "log": [],
         "decisions": [],
         "created": datetime.now().isoformat(),
+        "repo": repo,
     }
     save_project(project)
-    print(f"[big_projects] Новый проект зарегистрирован: '{project_id}' ({title}), {len(facets)} граней.")
+    repo_note = f", целевой репозиторий: {repo}" if repo else " (в рамках существующих репозиториев BLD)"
+    print(f"[big_projects] Новый проект зарегистрирован: '{project_id}' ({title}), {len(facets)} граней{repo_note}.")
     return project
 
 
