@@ -252,6 +252,28 @@ SPECIALIST_MODEL_ASSIGNMENTS = {
     "reliability_engineer": _env("MODEL_RELIABILITY_ENGINEER", "gpt-5.4"),
 }
 
+# --- Легаси большой инженерии (agents/soviet_engineering.py) ---
+# Архетипы советской/постсоветской школы крупной инженерии (атомная и
+# большая энергетика, аэрокосмос, монументальное строительство, оборонные
+# КБ, топ-математика) — портфель-wide (не только BLD), см. докстринг
+# модуля. "Технари-реализаторы" (industrial_automation/onboard_systems/
+# pattern_recognition) — на моделях не хуже, чем у остального пула
+# специалистов с write-доступом (см. SPECIALIST_MODEL_ASSIGNMENTS выше) —
+# им реально доверяют писать код (АСУ ТП/сети датчиков, embedded/edge,
+# computer vision), не только участвовать в обсуждении.
+SOVIET_ENGINEERING_MODEL_ASSIGNMENTS = {
+    "reactor_safety_engineer": _env("MODEL_REACTOR_SAFETY_ENGINEER", "gpt-5.4"),
+    "power_systems_engineer": _env("MODEL_POWER_SYSTEMS_ENGINEER", "gpt-5.4-mini"),
+    "aerospace_systems_engineer": _env("MODEL_AEROSPACE_SYSTEMS_ENGINEER", "gpt-5.4"),
+    "monumental_structural_engineer": _env("MODEL_MONUMENTAL_STRUCTURAL_ENGINEER", "gpt-5.4-mini"),
+    "metro_tunnel_engineer": _env("MODEL_METRO_TUNNEL_ENGINEER", "gpt-5.4-mini"),
+    "defense_precision_physicist": _env("MODEL_DEFENSE_PRECISION_PHYSICIST", "gpt-5.4"),
+    "olympiad_mathematician": _env("MODEL_OLYMPIAD_MATHEMATICIAN", "gpt-5.4"),
+    "industrial_automation_engineer": _env("MODEL_INDUSTRIAL_AUTOMATION_ENGINEER", "gpt-5.3-codex"),
+    "onboard_systems_engineer": _env("MODEL_ONBOARD_SYSTEMS_ENGINEER", "gpt-5.3-codex"),
+    "pattern_recognition_engineer": _env("MODEL_PATTERN_RECOGNITION_ENGINEER", "gpt-5.4"),
+}
+
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
 # Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
 KNOWLEDGE_CURATOR_MODEL = _env("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
