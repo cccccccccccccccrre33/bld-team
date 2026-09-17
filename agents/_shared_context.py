@@ -94,15 +94,35 @@ def load_construction_domain_context() -> str:
 
 
 @lru_cache(maxsize=1)
+def load_transformation_patterns_context() -> str:
+    """Возвращает содержимое context/digital_transformation_patterns.md —
+    ПЕРЕНОСИМЫЕ ПАТТЕРНЫ цифровой трансформации из других отраслей
+    (банкинг, big tech, госуслуги), дистиллированные из вторичного
+    источника (см. сам файл — там честно указан эпистемический статус:
+    это не то же самое, что прямые интервью в construction_domain.md).
+    Не про реальность СТРОЙКИ как отрасли (это construction_domain.md) —
+    про то, КАК исполнялась трансформация в других местах: архитектурные
+    ходы, инженерная дисциплина, организационные приёмы, и явно
+    зафиксированные нерешённые вопросы, которые компании придётся решать
+    самостоятельно, а не копировать."""
+    patterns_path = Path(__file__).resolve().parent.parent / "context" / "digital_transformation_patterns.md"
+    if not patterns_path.exists():
+        return "(ВНИМАНИЕ: context/digital_transformation_patterns.md не найден)"
+    return patterns_path.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
 def load_portfolio_context() -> str:
     """Полный контекст компании (load_company_context() — включая
     'Кто мы': Валик как CDTO, открытый портфель продуктов) ПЛЮС
-    доменный контекст стройки (load_construction_domain_context()) —
-    БЕЗ обрезки 'Кто мы' и БЕЗ scope-note про конкретные репозитории
-    (в отличие от load_bld_scope_context()), потому что роль, которая
-    это использует, ПО ЗАМЫСЛУ не привязана к одному продукту/репо —
-    её работа как раз в том, чтобы прикладывать накопленный опыт к
-    ЛЮБОЙ идее цифровизации стройки в портфеле, не только к BLD.
+    доменный контекст стройки (load_construction_domain_context()) ПЛЮС
+    переносимые паттерны трансформации из других отраслей
+    (load_transformation_patterns_context()) — БЕЗ обрезки 'Кто мы' и
+    БЕЗ scope-note про конкретные репозитории (в отличие от
+    load_bld_scope_context()), потому что роль, которая это использует,
+    ПО ЗАМЫСЛУ не привязана к одному продукту/репо — её работа как раз
+    в том, чтобы прикладывать накопленный опыт к ЛЮБОЙ идее
+    цифровизации стройки в портфеле, не только к BLD.
 
     ПРИМЕЧАНИЕ (честно про границы этого изменения): большинство
     остальных технических ролей в компании (Global Elite, специалисты,
@@ -116,7 +136,11 @@ def load_portfolio_context() -> str:
     системный промпт может по инерции считать себя ограниченной BLD —
     стоит иметь это в виду и почистить отдельным заходом, если станет
     заметной проблемой на практике."""
-    return load_company_context() + "\n\n---\n\n" + load_construction_domain_context()
+    return (
+        load_company_context()
+        + "\n\n---\n\n" + load_construction_domain_context()
+        + "\n\n---\n\n" + load_transformation_patterns_context()
+    )
 
 
 # --- Мандат интеллектуальной строгости ---
