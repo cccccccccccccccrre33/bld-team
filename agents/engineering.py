@@ -112,9 +112,13 @@ write_file) — не плейсхолдер, а готовый код с учё�
 
 def build_specialist_pool() -> dict:
     """Пул именных специалистов (архетипы мировых топ-вузов + инженерный
-    спецназ + Global Elite I/II/III/IV/V/VI), которых лид-инженер может
-    'нанять' под конкретную задачу — все с write_file, реально пишут
-    код. Используется вместо generic junior_engineer, когда нужен
+    спецназ + Global Elite I/II/III/IV/V/VI + легенды мегапроектов и
+    лидерства/аналитики/дизайна стройки, agents/construction_masters.py),
+    которых лид-инженер может 'нанять' под конкретную задачу — все с
+    write_file, реально пишут код (или, для не-инженерных ролей из
+    construction_masters, структурированные документы — требования,
+    чек-листы, пороги валидации). Используется вместо generic
+    junior_engineer, когда нужен
     конкретный профиль (надёжность → ETH или Reliability Engineer,
     скорость вычислений → USTC, latency прода → Performance Engineer,
     и т.д. — см. SPECIALTY_KEYWORDS в agents/global_geniuses.py,
@@ -135,6 +139,7 @@ def build_specialist_pool() -> dict:
     from agents.growth_team import GROWTH_BUILDERS
     from agents.soviet_engineering import SOVIET_ENGINEERING_BUILDERS
     from agents.research_track import RESEARCH_TRACK_BUILDERS
+    from agents.construction_masters import CONSTRUCTION_MASTERS_BUILDERS
     from agents.specialists import SPECIALIST_BUILDERS
 
     pool = {name: builder(can_write=True) for name, builder in GENIUS_BUILDERS.items()}
@@ -151,6 +156,7 @@ def build_specialist_pool() -> dict:
     pool.update({name: builder(can_write=True) for name, builder in ELITE6_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in SOVIET_ENGINEERING_BUILDERS.items()})
     pool.update({name: builder(can_write=True) for name, builder in RESEARCH_TRACK_BUILDERS.items()})
+    pool.update({name: builder(can_write=True) for name, builder in CONSTRUCTION_MASTERS_BUILDERS.items()})
     return pool
 
 

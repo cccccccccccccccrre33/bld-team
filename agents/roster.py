@@ -9,6 +9,7 @@ Engineering Mentor (agents/growth_team.py) сюда НЕ входит — у н�
 
 from agents.architecture_council import build_architect_roster
 from agents.board import build_board
+from agents.construction_masters import build_construction_masters_roster, CONSTRUCTION_MASTERS_KEYS
 from agents.engineering_fellows import build_fellows_roster
 from agents.executive_board import build_executive_board
 from agents.expansion_geniuses import build_global_roster as build_expansion_roster
@@ -52,18 +53,20 @@ CODE_ACCESS_ROLES = {
     "formal_correctness_engineer", "embedded_edge_engineer",
     *GLOBAL_ELITE_1_KEYS, *GLOBAL_ELITE_2_KEYS, *GLOBAL_ELITE_3_KEYS, *GLOBAL_ELITE_4_KEYS,
     *GLOBAL_ELITE_5_KEYS, *GLOBAL_ELITE_6_KEYS, *SOVIET_ENGINEERING_KEYS,
-    *RESEARCH_TRACK_KEYS,
+    *RESEARCH_TRACK_KEYS, *CONSTRUCTION_MASTERS_KEYS,
 }
 
 
 def build_full_roster() -> dict:
-    """Возвращает dict {role: Agent} со всеми людьми компании (~634:
+    """Возвращает dict {role: Agent} со всеми людьми компании (~644:
     59 исходных + 50 Global Elite I + 100 Global Elite II +
     100 Global Elite III + 100 Global Elite IV + 100 Global Elite V +
     100 Global Elite VI + 10 легаси большой инженерии СССР
     (agents/soviet_engineering.py) + 12 академического трека
-    PhD-математиков/физиков (agents/research_track.py) + 2 новых лида
-    отрядов Platform/Product + GTM Lead)."""
+    PhD-математиков/физиков (agents/research_track.py) + 10 легенд
+    мегапроектов и лидерства/аналитики/дизайна стройки
+    (agents/construction_masters.py) + 2 новых лида отрядов
+    Platform/Product + GTM Lead)."""
     roster = {}
     roster.update(build_board())
     roster.update(build_team())
@@ -82,6 +85,7 @@ def build_full_roster() -> dict:
     roster.update(build_global_elite_6_roster(can_write=False))
     roster.update(build_soviet_engineering_roster(can_write=False))
     roster.update(build_research_track_roster(can_write=False))
+    roster.update(build_construction_masters_roster(can_write=False))
     roster["squad_lead_alpha"] = build_squad_lead_alpha()
     roster["squad_lead_bravo"] = build_squad_lead_bravo()
     roster["squad_lead_platform"] = build_squad_lead_platform()

@@ -20,6 +20,7 @@ bld-team-departments.md.
 from agents.global_elite_3 import ELITE_ROSTER_3
 from agents.global_elite_4 import ELITE_ROSTER_4
 from agents.global_elite_6 import ELITE_ROSTER_6
+from agents.construction_masters import CONSTRUCTION_MASTERS_KEYS
 
 # Research & Fundamentals — консультативная гильдия без write:
 # фундаментальная математика/физика/доменная стройэкспертиза, питает
@@ -65,6 +66,16 @@ GUILDS = {
         "member_names": (
             [key for key, *_ in ELITE_ROSTER_3[60:70]]
             + ["imperial_fluid_dynamics", "som_load_bearing_engineer"]
+            # Легенды мегапроектов (agents/construction_masters.py) —
+            # физическая/организационная реальность стройки на пределе
+            # сложности (супервысотки, метро, мегаинфраструктура),
+            # прямое дополнение к академическим/BIM-консультантам выше.
+            + [
+                "dubai_supertall_construction_director",
+                "shanghai_metro_tbm_chief_engineer",
+                "crossrail_utility_diversion_program_director",
+                "manhattan_highrise_construction_manager",
+            ]
         ),
     },
     "mentorship": {
