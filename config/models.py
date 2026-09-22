@@ -296,6 +296,27 @@ RESEARCH_TRACK_MODEL_ASSIGNMENTS = {
     "frontier_research_scientist": _env("MODEL_FRONTIER_RESEARCH_SCIENTIST", "gpt-5.4"),
 }
 
+# Легенды мегапроектов + руководство/аналитика/дизайн стройки
+# (agents/construction_masters.py). Инженеры мегапроектов читают код
+# через tools так же надёжно, как research_track/soviet_engineering —
+# тот же уровень (gpt-5.2). CDTO-коллега — стратегический спарринг-
+# партнёр Валику, топовый уровень. Остальные — уровень суждения без
+# тяжёлого чтения кода (gpt-5.4-mini).
+CONSTRUCTION_MASTERS_MODEL_ASSIGNMENTS = {
+    "dubai_supertall_construction_director": _env("MODEL_DUBAI_SUPERTALL_CONSTRUCTION_DIRECTOR", "gpt-5.2"),
+    "shanghai_metro_tbm_chief_engineer": _env("MODEL_SHANGHAI_METRO_TBM_CHIEF_ENGINEER", "gpt-5.2"),
+    "crossrail_utility_diversion_program_director": _env(
+        "MODEL_CROSSRAIL_UTILITY_DIVERSION_PROGRAM_DIRECTOR", "gpt-5.4-mini"
+    ),
+    "manhattan_highrise_construction_manager": _env("MODEL_MANHATTAN_HIGHRISE_CONSTRUCTION_MANAGER", "gpt-5.2"),
+    "gc_coo_operations_veteran": _env("MODEL_GC_COO_OPERATIONS_VETERAN", "gpt-5.4-mini"),
+    "peer_construction_cdto_veteran": _env("MODEL_PEER_CONSTRUCTION_CDTO_VETERAN", "gpt-5.4"),
+    "construction_business_analyst": _env("MODEL_CONSTRUCTION_BUSINESS_ANALYST", "gpt-5.4-mini"),
+    "field_to_product_designer": _env("MODEL_FIELD_TO_PRODUCT_DESIGNER", "gpt-5.4-mini"),
+    "practicing_chief_architect": _env("MODEL_PRACTICING_CHIEF_ARCHITECT", "gpt-5.4-mini"),
+    "trust_general_director": _env("MODEL_TRUST_GENERAL_DIRECTOR", "gpt-5.4-mini"),
+}
+
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
 # Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
 KNOWLEDGE_CURATOR_MODEL = _env("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
