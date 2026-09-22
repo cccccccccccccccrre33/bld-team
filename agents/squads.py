@@ -234,7 +234,7 @@ SQUADS = {
         "label": "🅰️  Отряд Alpha (Ядро и данные)",
         "lead_builder": build_squad_lead_alpha,
         "member_names": [
-            "database_engineer", "performance_engineer", "mit", "mlops_engineer",
+            "database_engineer", "performance_engineer", "mit",
             "princeton_consensus_paxos", "mit_newsql_spanner", "cmu_timeseries_kernel",
             "waterloo_graph_engine", "ucl_event_sourcing_lead", "berkeley_query_optimizer",
             "stanford_rocksdb_kv", "eth_replication_consistency", "tsinghua_sharding_wechat",
@@ -266,7 +266,7 @@ SQUADS = {
         "label": "🅱️  Отряд Bravo (Надёжность и безопасность)",
         "lead_builder": build_squad_lead_bravo,
         "member_names": [
-            "security_engineer", "reliability_engineer", "eth", "devops_engineer",
+            "security_engineer", "reliability_engineer", "eth",
             "yubico_passwordless_auth", "imperial_data_anonymization", "cloudflare_ddos_defense",
             "snyk_supplychain_security", "owasp_mobile_pentest", "arm_secure_enclave", "splunk_siem",
             "maastricht_gdpr_compliance", "mandiant_incident_response", "tsinghua_model_obfuscation",
@@ -287,8 +287,21 @@ SQUADS = {
     "platform": {
         "label": "🅿️  Отряд Platform (Инфраструктура и эксплуатация)",
         "lead_builder": build_squad_lead_platform,
+        # ПЕРЕСМОТР СОСТАВА: убраны 11 имён (bosch_iot_fleet_ota,
+        # cambridge_freertos_firmware, ti_yocto_embeddedlinux,
+        # siliconlabs_ble_zigbee_lora, siemens_plc_scada, nvidia_jetson_edge_cv,
+        # nordic_power_battery_mgmt, bosch_sensortec_drivers, qnx_safety_critical_impl,
+        # analogdevices_dsp_impl, dspace_hil_testing) — их собственный why_bld
+        # в agents/global_elite_5.py честно формулировался как "если на
+        # объектах появятся датчики", то есть чистая заглушка под
+        # несуществующее железо, а не реальная экспертиза для "CI/CD,
+        # деплой, инфраструктура" — их территорию (АСУ ТП/сети датчиков,
+        # embedded/edge) теперь по-настоящему закрывают
+        # industrial_automation_engineer/onboard_systems_engineer из
+        # agents/soviet_engineering.py (портфель-wide, не привязаны к
+        # одному отряду BLD).
         "member_names": [
-            "devops_engineer", "mlops_engineer", "google_quic_protocol", "berkeley_mesh_networking",
+            "devops_engineer", "google_quic_protocol", "berkeley_mesh_networking",
             "mit_bbr_congestion", "samsung_5g_edge", "apple_ble_location", "spacex_starlink_connectivity",
             "paloalto_dpi_security", "facebook_grpc_performance", "cern_ptp_timesync",
             "cloudflare_anycast_lb", "google_gke_platform", "hashicorp_terraform_iac",
@@ -296,10 +309,7 @@ SQUADS = {
             "hashicorp_vault_secrets", "aws_finops_lead", "crunchydata_postgres_dre",
             "cloudflare_cdn_edge", "aqua_container_hardening", "gremlin_infra_chaos_impl",
             "tetrate_servicemesh_operator", "veeam_dr_architect_impl", "letsencrypt_pki_automation",
-            "bosch_iot_fleet_ota", "cambridge_freertos_firmware", "ti_yocto_embeddedlinux",
-            "siliconlabs_ble_zigbee_lora", "siemens_plc_scada", "nvidia_jetson_edge_cv",
-            "nordic_power_battery_mgmt", "bosch_sensortec_drivers", "qnx_safety_critical_impl",
-            "analogdevices_dsp_impl", "dspace_hil_testing", "platform_as_code_architect",
+            "platform_as_code_architect",
             "realtime_systems_architect",
         ],
         "domain_keywords": [
