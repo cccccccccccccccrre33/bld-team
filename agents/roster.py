@@ -23,6 +23,7 @@ from agents.gtm import build_gtm_lead
 from agents.growth_team import build_growth_roster
 from agents.specialists import build_specialist_roster
 from agents.soviet_engineering import SOVIET_ENGINEERING_KEYS, build_soviet_engineering_roster
+from agents.research_track import RESEARCH_TRACK_KEYS, build_research_track_roster
 from agents.squads import (
     build_squad_lead_alpha,
     build_squad_lead_bravo,
@@ -51,16 +52,18 @@ CODE_ACCESS_ROLES = {
     "formal_correctness_engineer", "embedded_edge_engineer",
     *GLOBAL_ELITE_1_KEYS, *GLOBAL_ELITE_2_KEYS, *GLOBAL_ELITE_3_KEYS, *GLOBAL_ELITE_4_KEYS,
     *GLOBAL_ELITE_5_KEYS, *GLOBAL_ELITE_6_KEYS, *SOVIET_ENGINEERING_KEYS,
+    *RESEARCH_TRACK_KEYS,
 }
 
 
 def build_full_roster() -> dict:
-    """Возвращает dict {role: Agent} со всеми людьми компании (~622:
+    """Возвращает dict {role: Agent} со всеми людьми компании (~634:
     59 исходных + 50 Global Elite I + 100 Global Elite II +
     100 Global Elite III + 100 Global Elite IV + 100 Global Elite V +
     100 Global Elite VI + 10 легаси большой инженерии СССР
-    (agents/soviet_engineering.py) + 2 новых лида отрядов
-    Platform/Product + GTM Lead)."""
+    (agents/soviet_engineering.py) + 12 академического трека
+    PhD-математиков/физиков (agents/research_track.py) + 2 новых лида
+    отрядов Platform/Product + GTM Lead)."""
     roster = {}
     roster.update(build_board())
     roster.update(build_team())
@@ -78,6 +81,7 @@ def build_full_roster() -> dict:
     roster.update(build_global_elite_5_roster(can_write=False))
     roster.update(build_global_elite_6_roster(can_write=False))
     roster.update(build_soviet_engineering_roster(can_write=False))
+    roster.update(build_research_track_roster(can_write=False))
     roster["squad_lead_alpha"] = build_squad_lead_alpha()
     roster["squad_lead_bravo"] = build_squad_lead_bravo()
     roster["squad_lead_platform"] = build_squad_lead_platform()
