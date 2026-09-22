@@ -274,6 +274,28 @@ SOVIET_ENGINEERING_MODEL_ASSIGNMENTS = {
     "pattern_recognition_engineer": _env("MODEL_PATTERN_RECOGNITION_ENGINEER", "gpt-5.4"),
 }
 
+# --- Академический трек (agents/research_track.py) ---
+# PhD-математики/физики, олимпиадные медалисты (IMO/IPhO/IOI/ICPC) —
+# 12 направлений цифровизации стройки, портфель-wide (не только BLD),
+# см. докстринг модуля. Формальная верификация/криптография/фундаментальные
+# исследования — на топ-моделях (требуют максимальной строгости
+# рассуждения); остальные — на сильных моделях, поскольку им тоже
+# реально доверяют писать код через write_file.
+RESEARCH_TRACK_MODEL_ASSIGNMENTS = {
+    "stochastic_systems_modeler": _env("MODEL_STOCHASTIC_SYSTEMS_MODELER", "gpt-5.4"),
+    "combinatorial_optimization_engineer": _env("MODEL_COMBINATORIAL_OPTIMIZATION_ENGINEER", "gpt-5.3-codex"),
+    "computer_vision_physicist": _env("MODEL_COMPUTER_VISION_PHYSICIST", "gpt-5.4"),
+    "signal_processing_physicist": _env("MODEL_SIGNAL_PROCESSING_PHYSICIST", "gpt-5.4-mini"),
+    "digital_twin_physicist": _env("MODEL_DIGITAL_TWIN_PHYSICIST", "gpt-5.4"),
+    "bayesian_ml_researcher": _env("MODEL_BAYESIAN_ML_RESEARCHER", "gpt-5.4"),
+    "formal_verification_mathematician": _env("MODEL_FORMAL_VERIFICATION_MATHEMATICIAN", "gpt-5.4"),
+    "cryptography_mathematician": _env("MODEL_CRYPTOGRAPHY_MATHEMATICIAN", "gpt-5.4"),
+    "computational_physics_simulator": _env("MODEL_COMPUTATIONAL_PHYSICS_SIMULATOR", "gpt-5.4-mini"),
+    "performance_algorithms_engineer": _env("MODEL_PERFORMANCE_ALGORITHMS_ENGINEER", "gpt-5.3-codex"),
+    "game_theory_mechanism_designer": _env("MODEL_GAME_THEORY_MECHANISM_DESIGNER", "gpt-5.4-mini"),
+    "frontier_research_scientist": _env("MODEL_FRONTIER_RESEARCH_SCIENTIST", "gpt-5.4"),
+}
+
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
 # Ведёт постоянную "вики компании" — дешёвая модель, чисто суммаризация.
 KNOWLEDGE_CURATOR_MODEL = _env("MODEL_KNOWLEDGE_CURATOR", "gpt-5.4-nano")
