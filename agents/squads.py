@@ -379,7 +379,7 @@ SQUADS = {
             "etsy_blameless_postmortem", "booking_pytest_test_architect", "gatling_load_testing_lead",
             "veracode_sast_dast_impl", "uber_appium_mobile_testing", "pactflow_contract_testing",
             "chromatic_visual_regression_impl", "deque_a11y_test_automation", "aws_fis_chaos_testing_impl",
-            "deloitte_data_reconciliation", "microsoft_exploratory_tester", "reliability_engineer",
+            "deloitte_data_reconciliation", "microsoft_exploratory_tester",
         ],
         "domain_keywords": [
             "тест", "покрыт", "pytest", "регресс", "observability", "slo", "нагрузочн тест", "chaos",
