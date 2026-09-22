@@ -57,7 +57,7 @@ from workflows.task_board import add_task, is_duplicate, update_task_status
 STATE_DIR = Path(".state")
 PROJECTS_DIR = STATE_DIR / "projects"
 
-PHASES = ["DIGEST", "DESIGN", "APPROVAL", "IMPLEMENTATION", "DONE"]
+PHASES = ["DIGEST", "DESIGN", "APPROVAL", "IMPLEMENTATION", "PILOT", "DONE"]
 
 # Реестр проектов "20% времени" — сюда можно дописывать новые крупные
 # проекты в будущем, не трогая остальной механизм. Каждый проект несёт
@@ -285,6 +285,11 @@ async def assess_phase_transition(project: dict) -> str | None:
         return None
     next_phase = PHASES[idx + 1]
 
+    # IMPLEMENTATION и PILOT сюда на практике не попадают: IMPLEMENTATION
+    # разрешается напрямую внутри run_project_day в тот же тик, а PILOT
+    # намеренно обходит эту функцию целиком (см. docstring run_project_day
+    # и _run_pilot_tick выше) — поэтому подсказки ниже касаются только
+    # первых трёх переходов, а не всех пяти.
     prompt = f"""
 Проект: {project['title']}
 Текущая фаза: {project['phase']}
@@ -297,8 +302,7 @@ async def assess_phase_transition(project: dict) -> str | None:
 DIGEST->DESIGN: команда реально осмыслила бриф и начала предлагать
 варианты. Для DESIGN->APPROVAL: есть конкретное дизайн-решение (не
 несколько равнозначных вариантов без выбора). Для APPROVAL-
->IMPLEMENTATION: получено согласование. Для IMPLEMENTATION->DONE: все
-запланированные части реализованы.
+>IMPLEMENTATION: получено согласование.
 
 Ответь строго: ГОТОВО: ДА или ГОТОВО: НЕТ
 Если ДА, одной строкой: ИТОГ: [что именно решено/готово]
@@ -321,13 +325,31 @@ DIGEST->DESIGN: команда реально осмыслила бриф и н�
 async def run_project_day(project_id: str) -> None:
     """Один тик рабочего дня проекта — несколько параллельных
     кластеров по разным граням, затем проверка перехода фазы, и (если
-    дошли до IMPLEMENTATION) реальная реализация конкретных частей."""
+    дошли до IMPLEMENTATION) реальная реализация конкретных частей.
+
+    PILOT — намеренное исключение из этого общего механизма (см. ниже
+    в этой функции). Фасетные кластеры обсуждают ГРАНИ ДИЗАЙНА
+    (придуманы на этапе DIGEST) — во время реального полевого пилота
+    это уже нерелевантное обсуждение, и, что важнее, generic
+    assess_phase_transition() ниже решает "готова ли фаза" ПО ЛОГУ
+    ОБСУЖДЕНИЯ — а не по реальным данным с объекта, которых у системы
+    физически нет. Если бы PILOT проходил через тот же механизм, LLM
+    мог бы решить "пилот успешен" на основании выдуманного обсуждения
+    старых DIGEST-граней — прямое нарушение "нет факта без
+    происхождения" (context/construction_intelligence_vision.md,
+    инженерная конституция). Поэтому PILOT завершается ТОЛЬКО через
+    явно выставленный человеком project['pilot_decision'] — см. блок
+    ниже."""
     if not await sync_repos_or_alert():
         return
 
     project = load_project(project_id)
     if project["phase"] == "DONE":
         print(f"[{project_id}] Проект уже завершён.")
+        return
+
+    if project["phase"] == "PILOT":
+        await _run_pilot_tick(project_id, project)
         return
 
     roster = build_full_roster()
@@ -464,9 +486,81 @@ async def run_project_day(project_id: str) -> None:
             notify_done(f"Проект «{project['title']}» — {part[:120]}")
             await curate_knowledge(f"Проект {project_id}: реализовано", report)
 
-        project["phase"] = "DONE"
+        # РАНЬШЕ здесь сразу стояло phase="DONE" — код смёржен в main
+        # считался концом проекта. Дыра: сама методология компании
+        # (context/construction_intelligence_vision.md, раздел про
+        # 90-дневный пилот и критерии принятия пользователями) требует
+        # ИМЕННО полевой проверки на реальном объекте перед решением о
+        # масштабе — смёрженный код без единого реального пользователя
+        # "готовым продуктом" не считается. PILOT — недостающая фаза
+        # между "код написан" и "признано законченным".
+        project["phase"] = "PILOT"
+        project["pilot_started"] = datetime.now().isoformat()
+        project["pilot_decision"] = None  # "scale" | "stop" — выставляется вручную, см. run_project_day PILOT-ветку
         save_project(project)
-        notify_done(f"Проект «{project['title']}» полностью реализован")
+
+        # Честно, не притворяясь: у системы нет реального канала данных
+        # с площадки (ни одного датчика/интеграции с реальным объектом
+        # ещё не существует) — узнать, работает ли пилот, может только
+        # человек на месте. Поэтому сразу при входе в PILOT — задача
+        # needs_founder_decision с конкретным чек-листом из методологии
+        # (см. "Дни 1-15" в construction_intelligence_vision.md), а не
+        # выдуманный прогресс.
+        pilot_task_id = add_task(
+            f"Пилот проекта «{project['title']}» — нужен владелец на объекте", f"project:{project_id}",
+            status="needs_founder_decision", repo=project_repo,
+            reason="Код смёржен, но это не значит, что продукт готов — готов только когда его использует живой человек на реальном объекте.",
+            how=(
+                "Назначь владельца пилота на площадке (не IT), выбери 2-4 реальные зоны/цепочки работ, "
+                "измерь базовую линию ДО старта (время на текущий учёт, PPC, возраст ограничений — см. "
+                "методологию в context/construction_intelligence_vision.md). Когда будет понятно, "
+                "масштабировать или остановить — обнови project['pilot_decision'] в "
+                f".state/projects/{project_id}.json на 'scale' или 'stop'."
+            ),
+        )
+        notify_done(f"Проект «{project['title']}» — код готов, начинается полевой пилот. 🧑‍💻 ТРЕБУЕТ ТЕБЯ: назначить владельца на объекте")
+        return
+
+async def _run_pilot_tick(project_id: str, project: dict) -> None:
+    """Один тик для проекта в фазе PILOT — см. докстринг run_project_day
+    про то, почему это ОТДЕЛЬНАЯ функция, а не часть общего механизма
+    facet-кластеров/assess_phase_transition. Единственный способ выйти
+    из PILOT — явно выставленный человеком project['pilot_decision'].
+    """
+    decision = project.get("pilot_decision")
+    if decision == "scale":
+        project["phase"] = "DONE"
+        project["decisions"].append({
+            "phase_completed": "PILOT", "summary": "Пилот подтверждён — решение масштабировать",
+            "date": datetime.now().isoformat(),
+        })
+        save_project(project)
+        notify_done(f"Проект «{project['title']}» — пилот подтверждён, проект завершён (готов к масштабированию)")
+        return
+    if decision == "stop":
+        project["phase"] = "DONE"
+        project["decisions"].append({
+            "phase_completed": "PILOT", "summary": "Пилот остановлен — эффект не подтверждён или решение не масштабировать",
+            "date": datetime.now().isoformat(),
+        })
+        save_project(project)
+        notify_done(f"Проект «{project['title']}» — пилот остановлен, проект закрыт")
+        return
+
+    # Решение ещё не принято человеком — молчим. Не заваливаем
+    # Telegram напоминаниями каждый день (см. tools/telegram_report.py
+    # и прямой запрос Валика "коротко по делу, не километровые
+    # отчёты") — но раз в ~30 дней честно напоминаем, что пилот
+    # ещё не подтверждён и ждёт решения, а не тихо забыт.
+    started = project.get("pilot_started")
+    if started:
+        days_running = (datetime.now() - datetime.fromisoformat(started)).days
+        if days_running > 0 and days_running % 30 == 0:
+            notify_done(
+                f"Проект «{project['title']}» — пилот идёт {days_running} дн., решение (scale/stop) "
+                "ещё не принято. 🧑‍💻 ТРЕБУЕТ ТЕБЯ, если пора решать."
+            )
+    return
 
 
 async def generate_facets_from_brief(title: str, brief: str) -> list[list]:
