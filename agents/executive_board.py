@@ -1,9 +1,13 @@
 """
-"Правление" — теперь только COO и HR. Остальные бизнес-роли
+"Правление" — COO, HR и VP Engineering. Остальные бизнес-роли
 (Sales/Marketing/CFO/Legal) оказались избыточны на практике и убраны.
+(Раньше этот докстринг сам не поспевал за кодом: тут было "только COO
+и HR" уже после того, как ниже добавили vp_engineering — сверено с
+build_executive_board() и обновлено.)
 
-COO участвует в обычных заседаниях правления (workflows/executive_meeting.py)
-вместе с HR — обсуждают операционные/организационные вопросы.
+COO и VP Engineering участвуют в обычных заседаниях правления
+(workflows/executive_meeting.py) вместе с HR — обсуждают операционные/
+организационные вопросы.
 
 HR ДОПОЛНИТЕЛЬНО имеет отдельный режим — workflows/hr_checkin.py —
 где реально "вызывает" одного случайного человека из всей компании
@@ -68,7 +72,8 @@ DISCUSSION_RULES = f"""
 
 
 def build_executive_board():
-    """Возвращает dict {role: Agent} — coo и hr для группового заседания."""
+    """Возвращает dict {role: Agent} — coo, hr и vp_engineering для
+    группового заседания (см. workflows/executive_meeting.py)."""
 
     coo = get_chat_client(EXEC_MODEL_ASSIGNMENTS["coo"]).as_agent(
         name="coo",
