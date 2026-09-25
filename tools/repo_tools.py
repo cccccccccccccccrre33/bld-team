@@ -140,6 +140,42 @@ REPOS = (
     }
 )
 
+
+def _parse_repo_keywords(raw: str) -> dict[str, list[str]]:
+    keywords: dict[str, list[str]] = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue  # мягко игнорируем опечатку в одной записи — не роняем конфиг остальных
+        name, _, kws = pair.partition("=")
+        keywords[name.strip()] = [k.strip() for k in kws.split("|") if k.strip()]
+    return keywords
+
+
+# РАНЬШЕ: чтобы определить, какому репозиторию адресована задача,
+# workflows/engineering_task.py::guess_repo() использовал бинарную
+# захардкоженную эвристику ("панель/фронт" → bld-panel, иначе всегда
+# bld-system) — при любом третьем репозитории, зарегистрированном через
+# workflows/big_projects.py::register_project(repo=...) (например,
+# отдельный продукт цифровизации — прошивка датчика/камеры, а не
+# довесок к BLD), задачи по нему тихо утекали в bld-system, потому что
+# guess_repo() вообще не знал о его существовании — тот же класс
+# проблемы, что раньше был у ALL_SPECIALTY_KEYWORDS в
+# engineering_task.py/individual_initiative.py (см. их докстринги).
+#
+# ТЕПЕРЬ: TARGET_REPO_KEYWORDS — тот же принцип, что domain_keywords у
+# отрядов (agents/squads.py), только для репозиториев, а не людей.
+# Формат зеркалит TARGET_REPOS: "имя=слово1|слово2,имя2=слово3|слово4".
+# Заводится ОДИН раз при регистрации нового продукта (не нужно
+# придумывать всё заранее — 3-5 ключевых слов, по которым задача
+# определённо про этот репозиторий, достаточно; остальное со временем
+# уточняется). Пустая строка (по умолчанию) = старое поведение без
+# изменений для тех, кто это не настроил.
+_TARGET_REPO_KEYWORDS_RAW = os.getenv("TARGET_REPO_KEYWORDS", "").strip()
+REPO_KEYWORDS: dict[str, list[str]] = (
+    _parse_repo_keywords(_TARGET_REPO_KEYWORDS_RAW) if _TARGET_REPO_KEYWORDS_RAW else {}
+)
+
 # Расширения, которые реально стоит отдавать модели как текст.
 # Бинарники, lock-файлы и node_modules/venv агентам ни к чему.
 TEXT_EXTENSIONS = {
