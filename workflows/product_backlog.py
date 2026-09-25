@@ -36,6 +36,17 @@ individual_initiative::scout_and_propose следующего тика) снач
 
 Хранится в .state/product_backlog.json — тот же паттерн коммит/пуш в
 git между запусками, что и у task_board/research_backlog/company_pulse.
+
+ПРО ПОЛЕ scope (важно для читающих дорожную карту
+context/idea_to_ecosystem_pipeline.md, Промт 1): там было предложено
+завести отдельное поле tier ('routine'/'concept'). Уже существующее
+поле scope ('мелкое'/'крупное') значит ровно то же самое — до этой
+правки оно влияло только на сортировку в format_summary(). Вместо
+дублирующего поля pull_concept_candidates() ниже просто начал
+СПРАШИВАТЬ scope по-настоящему. Меньше полей, то же поведение — то,
+что просил сам этот же файл строчкой выше ('не создавай третий
+параллельный бэклог') применено и к схеме одной записи, не только к
+факту существования отдельного файла.
 """
 
 import json
@@ -155,6 +166,51 @@ def get_pull_candidate(personal_keywords: list[str]) -> dict | None:
     return matches[0]
 
 
+def pull_concept_candidates(limit: int = 5) -> list[dict]:
+    """Открытые записи со scope='крупное' — то, что в компании
+    называют 'идея уровня продукта/подсистемы', а не точечный фикс.
+
+    ДЛЯ КОГО: Research & Fundamentals (agents/guilds.py,
+    RESEARCH_FUNDAMENTALS_KEYS) — по прямому запросу Валика они должны
+    получать идеи от всей команды ДОПОЛНИТЕЛЬНО к своей уже идущей
+    углублённой повестке, а не вместо неё и не по отдельному новому
+    расписанию. ЧЕСТНО: на момент написания этой функции
+    RESEARCH_FUNDAMENTALS_KEYS нигде в кодовой базе фактически не
+    вызывается — вся \"гильдия\" существует только как именованный
+    список людей в agents/guilds.py, без единого workflow, который бы
+    её реально созывал. Единственный РЕАЛЬНО работающий периodический
+    механизм с тем же смыслом (Chief Scientist, RESEARCH_FUNDAMENTALS_HEAD,
+    уже заседает там) — workflows/board_meeting.py (Совет директоров).
+    Поэтому эта функция подключена именно туда (find_agenda()), а не в
+    новый цикл — см. вызов в board_meeting.py и комментарий там же.
+
+    Не помечает записи как \"взятые\" (в отличие от get_pull_candidate +
+    mark_pulled) — несколько разных обсуждений могут учитывать одну и
+    ту же идею параллельно, это не эксклюзивный захват задачи, а просто
+    входной материал для обсуждения."""
+    open_entries = [e for e in _load() if e.get("status") == "open" and e.get("scope") == "крупное"]
+    open_entries.sort(key=lambda e: e.get("last_touched", ""))
+    return open_entries[:limit]
+
+
+def format_concept_candidates_for_prompt(limit: int = 5) -> str:
+    """Готовый текстовый блок для вставки в промт — то, что реально
+    добавляется в find_agenda() (board_meeting.py), а не отдельный
+    формат, который надо было бы придумывать заново."""
+    candidates = pull_concept_candidates(limit)
+    if not candidates:
+        return ""
+    lines = [
+        "\nКрупные идеи, накопленные от остальной команды со времени "
+        "прошлого заседания (необязательно брать именно их — но если "
+        "что-то из этого реально релевантно теме, которую ты выберешь, "
+        "учти это, не изобретай с нуля то, что уже кто-то заметил):"
+    ]
+    for e in candidates:
+        lines.append(f"  - [{e['origin']}] {e['title']} — {e['summary']}")
+    return "\n".join(lines)
+
+
 def mark_pulled(entry_id: str) -> None:
     """Отмечает, что запись была ПОКАЗАНА кому-то как подсказка (не
     обязательно взята в работу) — двигает last_touched вперёд, чтобы
@@ -213,3 +269,27 @@ def format_summary(limit: int = 10) -> str:
     for e in entries:
         lines.append(f"  [{e['scope']}] {e['title']} (источник: {e['origin']}, с {e['created']})")
     return "\n".join(lines)
+
+
+def _main() -> None:
+    """Ручной ввод идеи — по Промту 1
+    (context/idea_to_ecosystem_pipeline.md), пункт 2, вариант 'или
+    отдельная лёгкая команда'. workflows/goal_intake.py для этого не
+    подходит семантически: /goal — это директива Валика на немедленное
+    исполнение (triage_goal сразу решает bugfix/feature/new_system и
+    т.д.), а не запись идеи на будущее рассмотрение. Здесь — просто
+    добавить мысль в общий бэклог, ничего не запуская.
+
+    Запуск: python main_submit_idea.py "заголовок" "описание" [крупное|мелкое]"""
+    import sys
+    if len(sys.argv) < 3:
+        print('Использование: python main_submit_idea.py "заголовок" "описание" [крупное|мелкое]')
+        return
+    title, summary = sys.argv[1], sys.argv[2]
+    scope = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] in ("крупное", "мелкое") else "мелкое"
+    entry_id = add_entry(title=title, summary=summary, origin="manual", scope=scope)
+    print(f"Добавлено в product backlog: {entry_id}")
+
+
+if __name__ == "__main__":
+    _main()

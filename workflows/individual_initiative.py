@@ -69,7 +69,7 @@ from tools.repo_tools import REPOS, clone_or_update_repos, git_log, grep_repo
 from workflows._common import curate_knowledge, fair_sample, format_notebook, load_notebook, notify_done, notify_failed, record_participation, save_notebook_entry
 from workflows.cto_approval import consult, cto_approval
 from workflows.engineering_task import run_engineering_task
-from workflows.product_backlog import get_pull_candidate, mark_pulled
+from workflows.product_backlog import add_entry as add_backlog_entry, get_pull_candidate, mark_pulled
 from workflows.task_board import add_task, can_take_more, get_board_summary, is_duplicate, update_task_status
 
 ALL_BUILDERS = {
@@ -399,6 +399,23 @@ async def run_individual_initiative(name: str | None = None) -> None:
 
     if not approved:
         update_task_status(task_id, "rejected", comment)
+        # По Промту 1 (context/idea_to_ecosystem_pipeline.md) — раньше
+        # отклонённая идея жила только тут (task_board, status=rejected)
+        # и в личном дневнике инициатора — оба места никто повторно не
+        # перечитывает специально. Это и была та самая дыра, которую
+        # сам этот файл (product_backlog.py) называл своей мотивацией в
+        # докстринге, но так и не довёл до конца для этого конкретного
+        # источника. Теперь сохраняется в общий бэклог тем же способом,
+        # что и всё остальное — оценка "плохая идея или просто не
+        # вовремя" остаётся за тем, кто её позже подхватит, не за этим
+        # моментом отказа.
+        add_backlog_entry(
+            title=title,
+            summary=f"Отклонено при первой подаче ({verdict_source}): {comment[:200]}. {reason}",
+            origin="individual_initiative",
+            scope="крупное" if not confident else "мелкое",
+            participants=[name],
+        )
         # РАНЬШЕ сюда же уходил send_telegram_report — по прямому
         # запросу Валика убрано: отклонение идеи не готовая работа,
         # это внутренний статус. Остаётся на task board (status=

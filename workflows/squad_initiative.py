@@ -22,6 +22,7 @@ from agents.squads import SQUADS
 from tools.repo_tools import REPOS, clone_or_update_repos, grep_repo, git_log
 from workflows._common import ask, curate_knowledge, notify_done, notify_failed
 from workflows.cto_approval import cto_approval
+from workflows.product_backlog import add_entry as add_backlog_entry
 from workflows.squad_task import detect_relevant_squads, run_squad_relay, run_squad_task
 from workflows.task_board import (
     add_task, can_take_more, get_board_summary,
@@ -200,6 +201,22 @@ async def run_squad_initiative(squad_key: str) -> None:
             print(f"[{squad_key}] CTO одобрил: {cto_comment}")
         else:
             update_task_status(task_id, "rejected", cto_comment)
+            # По Промту 1 (context/idea_to_ecosystem_pipeline.md): CTO
+            # мог отклонить по причине "не сейчас"/"не приоритет", а не
+            # "идея плоха" — раньше это терялось насовсем (оставалось
+            # только status=rejected на доске, которую никто повторно
+            # не читает). Теперь сохраняется в общий бэклог — реальную
+            # оценку "плохая или просто не вовремя" сделает тот, кто
+            # позже её подхватит через get_pull_candidate/
+            # pull_concept_candidates, тем же механизмом, что и любую
+            # другую идею, а не здесь и сейчас.
+            add_backlog_entry(
+                title=title,
+                summary=f"Отклонено CTO при первой подаче ({cto_comment[:200]}). {reason}",
+                origin="squad_initiative",
+                scope="крупное" if is_relay else "мелкое",
+                participants=[squad_key],
+            )
             print(f"[{squad_key}] CTO отклонил: {display_label} — {title} — {cto_comment}")
             return
 

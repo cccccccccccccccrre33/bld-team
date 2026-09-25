@@ -18,7 +18,7 @@ from agent_framework import Message
 from agents.board import build_board, COMPANY_CONTEXT
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import REPOS, git_log, grep_repo, list_repo_files, read_file
 from workflows._common import (
     run_free_conversation,
     ask,
@@ -34,6 +34,7 @@ from workflows._common import (
     save_topic,
     sync_repos_or_alert,
 )
+from workflows.product_backlog import format_concept_candidates_for_prompt
 from workflows.squad_initiative import run_squad_initiative
 from workflows.squad_task import detect_relevant_squads, dispatch_squads, run_squad_relay, run_squad_task
 from workflows.task_board import (
@@ -73,10 +74,10 @@ ROLE_LABELS = {
 
 AGENDA_TOOLS = [list_repo_files, read_file, git_log, grep_repo]
 
-AGENDA_SCOPE = """
+AGENDA_SCOPE = f"""
 Про зону обсуждения: Совет директоров — в первую очередь техническое
-обсуждение по проекту BLD System (оба репозитория: bld-system и
-bld-panel) — архитектура, надёжность, anomaly detection engine,
+обсуждение по проекту BLD System ({", ".join(REPOS.keys())}) —
+архитектура, надёжность, anomaly detection engine,
 качество кода, технический долг, готовность к росту нагрузки.
 
 Тему выбираешь ты сам, свободно — глядя в реальный код, а не по
@@ -107,6 +108,17 @@ async def find_agenda(cli_hint: str | None) -> str:
             + "\n".join(f"- {t}" for t in recent_topics)
         )
 
+    # По прямому запросу Валика (context/idea_to_ecosystem_pipeline.md,
+    # Промт 1): идеи от всей команды должны доходить до Research &
+    # Fundamentals ДОПОЛНИТЕЛЬНО к их собственной повестке, без нового
+    # отдельного цикла под это. RESEARCH_FUNDAMENTALS_KEYS
+    # (agents/guilds.py) сама по себе нигде не вызывается как
+    # автономный workflow — Chief Scientist (RESEARCH_FUNDAMENTALS_HEAD)
+    # заседает именно здесь, в Совете директоров, и это единственный
+    # реально работающий периodический механизм с тем же смыслом.
+    # Поэтому именно сюда, а не в новый файл.
+    concept_block = format_concept_candidates_for_prompt()
+
     client = get_chat_client(BOARD_MODEL_ASSIGNMENTS["agenda_setter"])
     agenda_agent = client.as_agent(
         name="agenda_setter",
@@ -117,11 +129,15 @@ async def find_agenda(cli_hint: str | None) -> str:
 {COMPANY_CONTEXT}
 {AGENDA_SCOPE}
 {recent_block}
+{concept_block}
 
-Загляни в реальный код (git_log, grep_repo, read_file по bld-system и
-bld-panel), найди что-то конкретное, за что можно зацепиться, и сам
+Загляни в реальный код (git_log, grep_repo, read_file по {", ".join(REPOS.keys())}),
+найди что-то конкретное, за что можно зацепиться, и сам
 сформулируй ОДИН острый вопрос для заседания совета — какой сочтёшь
 наиболее актуальным именно сейчас, глядя на реальное состояние кода.
+Если что-то из накопленных идей команды выше реально совпадает с тем,
+что ты сам нашёл в коде — можешь взять его как отправную точку, но
+финальный вопрос всё равно формулируешь сам, не пересказывай список.
 Не подгоняй под шаблон — тема должна родиться из того, что ты реально
 увидел в коде.
 Ответь ТОЛЬКО самим вопросом, без преамбулы и кавычек.
