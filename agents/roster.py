@@ -58,12 +58,12 @@ CODE_ACCESS_ROLES = {
 
 
 def build_full_roster() -> dict:
-    """Возвращает dict {role: Agent} со всеми людьми компании (~644:
+    """Возвращает dict {role: Agent} со всеми людьми компании (~646:
     59 исходных + 50 Global Elite I + 100 Global Elite II +
     100 Global Elite III + 100 Global Elite IV + 100 Global Elite V +
     100 Global Elite VI + 10 легаси большой инженерии СССР
     (agents/soviet_engineering.py) + 12 академического трека
-    PhD-математиков/физиков (agents/research_track.py) + 10 легенд
+    PhD-математиков/физиков (agents/research_track.py) + 12 легенд
     мегапроектов и лидерства/аналитики/дизайна стройки
     (agents/construction_masters.py) + 2 новых лида отрядов
     Platform/Product + GTM Lead)."""
