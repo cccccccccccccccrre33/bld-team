@@ -40,10 +40,13 @@ from agents.soviet_engineering import SOVIET_ENGINEERING_LABELS
 from agents.soviet_engineering import SPECIALTY_KEYWORDS as SOVIET_ENGINEERING_KEYWORDS
 from agents.research_track import RESEARCH_TRACK_LABELS
 from agents.research_track import SPECIALTY_KEYWORDS as RESEARCH_TRACK_KEYWORDS
+from agents.construction_masters import CONSTRUCTION_MASTERS_LABELS
+from agents.construction_masters import SPECIALTY_KEYWORDS as CONSTRUCTION_MASTERS_KEYWORDS
 from agents.specialists import SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from config.models import (
     BOARD_MODEL_ASSIGNMENTS,
+    CONSTRUCTION_MASTERS_MODEL_ASSIGNMENTS,
     EXPANSION_MODEL_ASSIGNMENTS,
     GLOBAL_ELITE_1_MODEL_ASSIGNMENTS,
     GLOBAL_ELITE_2_MODEL_ASSIGNMENTS,
@@ -63,7 +66,7 @@ from workflows.cto_approval import cto_approval
 
 # РАНЬШЕ этот словарь не включал Global Elite I-VI вообще (только
 # гении/специалисты/growth/expansion/architects) — то есть ~600 из
-# ~612 человек компании были физически недостижимы через
+# ~618 человек компании были физически недостижимы через
 # find_matching_specialists(), даже если их ключевые слова идеально
 # совпадали с задачей: помощь либо не звалась вовсе, либо (в
 # run_engineering_task, где помощь ОБЯЗАТЕЛЬНА для отрядов —
@@ -72,24 +75,30 @@ from workflows.cto_approval import cto_approval
 # отрядов (agents/squads.py) до 7 департаментов с пулами по 20-80
 # человек из Global Elite I-VI это стало особенно заметно — почти
 # весь новый пул был недоступен для реального адресного матчинга.
+# Позже так же были упущены construction_masters (10 человек,
+# agents/construction_masters.py) — тот же класс бага при добавлении
+# новой группы специалистов, тот же фикс: не забывать про это ТРЕТЬЕ
+# место (после roster.py и individual_initiative.py), где список
+# специалистов собирается заново вручную, а не переиспользуется.
 ALL_SPECIALTY_KEYWORDS = {
     **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
     **ARCHITECT_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
     **ELITE3_SPECIALTY_KEYWORDS, **ELITE4_SPECIALTY_KEYWORDS, **ELITE5_SPECIALTY_KEYWORDS,
     **ELITE6_SPECIALTY_KEYWORDS, **SOVIET_ENGINEERING_KEYWORDS, **RESEARCH_TRACK_KEYWORDS,
+    **CONSTRUCTION_MASTERS_KEYWORDS,
 }
 ALL_SPECIALIST_LABELS = {
     **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
     **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS, **ELITE3_LABELS,
     **ELITE4_LABELS, **ELITE5_LABELS, **ELITE6_LABELS, **SOVIET_ENGINEERING_LABELS,
-    **RESEARCH_TRACK_LABELS,
+    **RESEARCH_TRACK_LABELS, **CONSTRUCTION_MASTERS_LABELS,
 }
 ALL_SPECIALIST_MODELS = {
     **GLOBAL_MODEL_ASSIGNMENTS, **SPECIALIST_MODEL_ASSIGNMENTS, **GROWTH_MODEL_ASSIGNMENTS,
     **EXPANSION_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_1_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_2_MODEL_ASSIGNMENTS,
     **GLOBAL_ELITE_3_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_4_MODEL_ASSIGNMENTS, **GLOBAL_ELITE_5_MODEL_ASSIGNMENTS,
     **GLOBAL_ELITE_6_MODEL_ASSIGNMENTS, **SOVIET_ENGINEERING_MODEL_ASSIGNMENTS,
-    **RESEARCH_TRACK_MODEL_ASSIGNMENTS,
+    **RESEARCH_TRACK_MODEL_ASSIGNMENTS, **CONSTRUCTION_MASTERS_MODEL_ASSIGNMENTS,
 }
 
 # РАНЬШЕ: решение "звать ли помощь" принималось поиском подстрок вида

@@ -2,11 +2,19 @@
 Индивидуальная инициатива — не только 2 фиксированных отряда. ЛЮБОЙ
 человек компании с реальным доступом к коду (9 глобальных гениев + 4
 специалиста + 3 growth-роли + 10 expansion-гениев + 10 архитекторов +
-550 Global Elite I/II/III/IV/V/VI = 586 человек) может сам заметить проблему в
-СВОЕЙ специализации и предложить фикс. (Старая цифра "26" в этом же
-комментарии была неточной ещё до Global Elite — не учитывала 10
-expansion-гениев; посчитано заново по факту содержимого словарей, а не
-по старой формуле.)
+550 Global Elite I/II/III/IV/V/VI + 12 академического трека
+(agents/research_track.py) + 10 легаси большой инженерии СССР
+(agents/soviet_engineering.py) + 10 легенд мегапроектов и лидерства/
+аналитики/дизайна стройки (agents/construction_masters.py) = 618
+человек) может сам заметить проблему в СВОЕЙ специализации и предложить
+фикс. (Старая цифра "586" в этом же комментарии была неточной: эти три
+группы имеют write-доступ наравне с остальными — см.
+agents/roster.py::CODE_ACCESS_ROLES — и уже участвуют в
+build_full_roster()/domain_scan.py/lab_session.py, но были упущены
+именно здесь, в собственном ALL_BUILDERS этого файла, который исторически
+собирается отдельно от roster.py, а не переиспользует
+build_full_roster() — это и есть источник расхождения, стоит иметь в
+виду при следующем добавлении новой группы специалистов.)
 
 ВАЖНО: решение никогда не принимается одним человеком в одиночку, даже
 если он сам уверен в своей области. Каждая инициатива проходит
@@ -49,6 +57,12 @@ from agents.global_geniuses import GENIUS_BUILDERS, GLOBAL_LABELS
 from agents.global_geniuses import SPECIALTY_KEYWORDS as GENIUS_KEYWORDS
 from agents.growth_team import GROWTH_BUILDERS, GROWTH_LABELS
 from agents.growth_team import SPECIALTY_KEYWORDS as GROWTH_KEYWORDS
+from agents.research_track import RESEARCH_TRACK_BUILDERS, RESEARCH_TRACK_LABELS
+from agents.research_track import SPECIALTY_KEYWORDS as RESEARCH_TRACK_KEYWORDS
+from agents.soviet_engineering import SOVIET_ENGINEERING_BUILDERS, SOVIET_ENGINEERING_LABELS
+from agents.soviet_engineering import SPECIALTY_KEYWORDS as SOVIET_ENGINEERING_KEYWORDS
+from agents.construction_masters import CONSTRUCTION_MASTERS_BUILDERS, CONSTRUCTION_MASTERS_LABELS
+from agents.construction_masters import SPECIALTY_KEYWORDS as CONSTRUCTION_MASTERS_KEYWORDS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
 from tools.repo_tools import clone_or_update_repos, git_log, grep_repo
@@ -61,12 +75,14 @@ from workflows.task_board import add_task, can_take_more, get_board_summary, is_
 ALL_BUILDERS = {
     **GENIUS_BUILDERS, **SPECIALIST_BUILDERS, **GROWTH_BUILDERS, **EXPANSION_BUILDERS,
     **ARCHITECT_BUILDERS, **ELITE1_BUILDERS, **ELITE2_BUILDERS, **ELITE3_BUILDERS, **ELITE4_BUILDERS,
-    **ELITE5_BUILDERS, **ELITE6_BUILDERS,
+    **ELITE5_BUILDERS, **ELITE6_BUILDERS, **RESEARCH_TRACK_BUILDERS, **SOVIET_ENGINEERING_BUILDERS,
+    **CONSTRUCTION_MASTERS_BUILDERS,
 }
 ALL_LABELS = {
     **GLOBAL_LABELS, **SPECIALIST_LABELS, **GROWTH_LABELS, **EXPANSION_LABELS,
     **ARCHITECT_LABELS, **ELITE1_LABELS, **ELITE2_LABELS, **ELITE3_LABELS, **ELITE4_LABELS,
-    **ELITE5_LABELS, **ELITE6_LABELS,
+    **ELITE5_LABELS, **ELITE6_LABELS, **RESEARCH_TRACK_LABELS, **SOVIET_ENGINEERING_LABELS,
+    **CONSTRUCTION_MASTERS_LABELS,
 }
 
 # Ключевые слова специализации каждого — те же самые, по которым в
@@ -78,7 +94,8 @@ ALL_MATCH_KEYWORDS = {
     **GENIUS_KEYWORDS, **SPECIALIST_KEYWORDS, **GROWTH_KEYWORDS, **EXPANSION_KEYWORDS,
     **ARCHITECT_KEYWORDS, **ELITE1_SPECIALTY_KEYWORDS, **ELITE2_SPECIALTY_KEYWORDS,
     **ELITE3_SPECIALTY_KEYWORDS, **ELITE4_SPECIALTY_KEYWORDS, **ELITE5_SPECIALTY_KEYWORDS,
-    **ELITE6_SPECIALTY_KEYWORDS,
+    **ELITE6_SPECIALTY_KEYWORDS, **RESEARCH_TRACK_KEYWORDS, **SOVIET_ENGINEERING_KEYWORDS,
+    **CONSTRUCTION_MASTERS_KEYWORDS,
 }
 
 
