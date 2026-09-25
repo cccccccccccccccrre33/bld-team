@@ -1,0 +1,48 @@
+name: Field Immersion
+
+on:
+  schedule:
+    # Раз в день. Пока context/construction_domain.md пуст, реального
+    # прогона не будет вообще (см. workflows/field_immersion.py) — сам
+    # cron не тратит впустую, тратится только один быстрый проход
+    # проверки файла + троттлинг Telegram-напоминания раз в 3 дня.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      count:
+        description: 'Сколько человек за сессию (по умолчанию 3)'
+        required: false
+        default: '3'
+
+permissions:
+  contents: write
+
+jobs:
+  immersion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run field immersion session
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_AI_INFERENCE_KEY:   ${{ secrets.AZURE_AI_INFERENCE_KEY }}
+          GITHUB_TOKEN:             ${{ secrets.BLD_REPOS_PAT }}
+          TELEGRAM_BOT_TOKEN:       ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:         ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main_field_immersion.py ${{ github.event.inputs.count || '3' }}
