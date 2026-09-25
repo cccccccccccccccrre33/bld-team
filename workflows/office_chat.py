@@ -3,7 +3,8 @@
 
 Отличие от workflows/discussion.py и board_meeting.py: нет заранее
 заданной темы/повестки. Один случайный участник ("искра") сам лезет
-в реальный код (bld-system или bld-panel, тоже случайно), находит что-то,
+в реальный код (случайный репозиторий из tools.repo_tools.REPOS,
+не всегда одни и те же два), находит что-то,
 за что зацепиться, и просто начинает разговор об этом — не обязательно
 проблему, может быть что угодно любопытное.
 
@@ -22,7 +23,7 @@ from agent_framework.orchestrations import GroupChatBuilder
 from agents.office_chat import build_office_chat_team, CONTEXT_PREAMBLE
 from config.client_factory import get_chat_client
 from config.models import OFFICE_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import REPOS, git_log, grep_repo, list_repo_files, read_file
 from workflows._common import ask, extract_messages, sync_repos_or_alert
 
 MAX_MESSAGES = 12  # это чат, не заседание — держим коротко
@@ -42,7 +43,7 @@ async def find_spark(repo_hint: str | None) -> tuple[str, str]:
     Возвращает (имя_агента_зачинщика, реплика-затравка)."""
 
     starter_role = random.choice(["cto", "backend_senior", "product_frontend", "qa_security"])
-    repo = repo_hint or random.choice(["bld-system", "bld-panel"])
+    repo = repo_hint or random.choice(list(REPOS.keys()))
 
     client = get_chat_client(OFFICE_MODEL_ASSIGNMENTS["spark"])
     spark_agent = client.as_agent(
@@ -151,7 +152,7 @@ async def compile_chat_report(starter_role: str, spark_line: str, transcript: li
 
 
 async def main():
-    repo_hint = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in ("bld-system", "bld-panel") else None
+    repo_hint = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in REPOS else None
 
     print("Клонируем/обновляем репозитории...")
     if not await sync_repos_or_alert():

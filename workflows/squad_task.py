@@ -16,7 +16,7 @@ from agents.engineering import build_specialist_pool
 from agents.squads import SQUADS
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_log, grep_repo
+from tools.repo_tools import REPOS, git_log, grep_repo
 from workflows._common import record_participation, safe_agent_run
 from workflows.engineering_task import run_engineering_task
 from workflows.task_board import record_task_participants
@@ -58,7 +58,7 @@ async def find_squad_problem(squad_key: str, recent_context: str = "") -> str:
 Ты ищешь задачу для {squad['label']} — зона ответственности этой
 команды: {domain_hint}.
 {board_note}
-Посмотри git_log и grep_repo по репозиториям bld-system/bld-panel и
+Посмотри git_log и grep_repo по репозиториям {", ".join(REPOS.keys())} и
 найди ОДНУ конкретную проблему или улучшение именно в этой зоне
 ответственности — новую, не дублирующую то, что уже в работе.
 Сформулируй как одну конкретную задачу, 1-2 предложения, без преамбулы.

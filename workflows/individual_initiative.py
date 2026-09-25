@@ -65,7 +65,7 @@ from agents.construction_masters import CONSTRUCTION_MASTERS_BUILDERS, CONSTRUCT
 from agents.construction_masters import SPECIALTY_KEYWORDS as CONSTRUCTION_MASTERS_KEYWORDS
 from agents.specialists import SPECIALIST_BUILDERS, SPECIALIST_LABELS
 from agents.specialists import SPECIALTY_KEYWORDS as SPECIALIST_KEYWORDS
-from tools.repo_tools import clone_or_update_repos, git_log, grep_repo
+from tools.repo_tools import REPOS, clone_or_update_repos, git_log, grep_repo
 from workflows._common import curate_knowledge, fair_sample, format_notebook, load_notebook, notify_done, notify_failed, record_participation, save_notebook_entry
 from workflows.cto_approval import consult, cto_approval
 from workflows.engineering_task import run_engineering_task
@@ -287,7 +287,7 @@ async def scout_and_propose(name: str) -> dict | None:
 {notebook_block}
 {get_relevant_pulse_threads(name)}
 {get_backlog_pull_hint(name)}
-Загляни в реальный код (git_log, grep_repo по bld-system и bld-panel)
+Загляни в реальный код (git_log, grep_repo по {", ".join(REPOS.keys())})
 и найди ОДНУ конкретную проблему именно в твоей специализации — не
 общую, а такую, в которой ты реально эксперт.
 

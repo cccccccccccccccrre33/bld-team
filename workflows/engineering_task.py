@@ -60,7 +60,7 @@ from config.models import (
     SOVIET_ENGINEERING_MODEL_ASSIGNMENTS,
     SPECIALIST_MODEL_ASSIGNMENTS,
 )
-from tools.repo_tools import commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
+from tools.repo_tools import REPO_KEYWORDS, REPOS, commit_and_push, create_branch, get_repo_write_lock, merge_branch_to_main
 from workflows._common import curate_knowledge, fair_sample, notify_done, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 
@@ -183,12 +183,46 @@ def make_branch_name(task: str, branch_prefix: str) -> str:
 
 
 def guess_repo(task: str) -> str:
-    """Простая эвристика: если задача явно про фронт/панель — bld-panel,
-    иначе по умолчанию bld-system."""
+    """Определяет репозиторий по тексту задачи.
+
+    РАНЬШЕ: бинарная захардкоженная эвристика — "панель/фронт" по
+    ключевым словам → bld-panel, иначе ВСЕГДА bld-system. При любом
+    третьем зарегистрированном продукте
+    (workflows/big_projects.py::register_project(repo=...)) — например,
+    отдельная прошивка датчика/камеры, а не довесок к BLD — задачи по
+    нему тихо утекали в bld-system, потому что эта функция вообще не
+    знала о его существовании. Тот же класс проблемы, что раньше был у
+    ALL_SPECIALTY_KEYWORDS выше в этом файле.
+
+    ТЕПЕРЬ: сначала матчим текст задачи против
+    tools.repo_tools.REPO_KEYWORDS (ключевые слова на репозиторий —
+    заводятся один раз при регистрации нового продукта через
+    TARGET_REPO_KEYWORDS, тот же принцип, что domain_keywords у
+    отрядов, agents/squads.py) — побеждает самое специфичное
+    совпадение. Если ключевые слова не заведены ни для одного
+    репозитория или ничего не совпало — старое поведение как запасной
+    вариант (bld-panel по фронтенд-словам, если такой репозиторий вообще
+    сконфигурирован; иначе первый репозиторий из REPOS, а не всегда
+    буквально строка "bld-system") — обратная совместимость с тем, что
+    уже настроено, без изменений в поведении для тех, кто новый
+    TARGET_REPO_KEYWORDS не завёл."""
     lowered = task.lower()
-    if any(kw in lowered for kw in ["панел", "фронт", "react", "ui", "интерфейс"]):
+
+    best_repo, best_len = None, 0
+    for repo_name, kws in REPO_KEYWORDS.items():
+        if repo_name not in REPOS:
+            continue
+        matched = [kw for kw in kws if kw.lower() in lowered]
+        if matched:
+            length = max(len(kw) for kw in matched)
+            if length > best_len:
+                best_repo, best_len = repo_name, length
+    if best_repo:
+        return best_repo
+
+    if "bld-panel" in REPOS and any(kw in lowered for kw in ["панел", "фронт", "react", "ui", "интерфейс"]):
         return "bld-panel"
-    return "bld-system"
+    return "bld-system" if "bld-system" in REPOS else next(iter(REPOS), "bld-system")
 
 
 def find_matching_specialists(

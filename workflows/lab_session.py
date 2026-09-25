@@ -8,7 +8,8 @@
   команда под конкретную задачу).
 - Тип проблемы выбирается сам: если у обоих/у кого-то из выбранных
   есть доступ к коду — можно взять реальную техническую проблему из
-  bld-system/bld-panel; если нет — берётся абстрактная стратегическая/
+  любого сконфигурированного репозитория (tools.repo_tools.REPOS, не
+  только bld-system/bld-panel); если нет — берётся абстрактная стратегическая/
   архитектурная проблема. Выбор делает сама пара (через открывающую
   реплику первого участника).
 - Итоговый отчёт — не протокол дискуссии, а сравнение решений:
@@ -29,7 +30,7 @@ from agents.specialists import SPECIALIST_LABELS
 from agents.roster import CODE_ACCESS_ROLES, build_full_roster
 from config.client_factory import get_chat_client
 from config.models import BOARD_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import REPOS, git_log, grep_repo, list_repo_files, read_file
 from workflows._common import ask, curate_knowledge, extract_next_step, fair_sample, looks_like_meta_complaint, notify_done, notify_failed, record_participation, run_free_conversation, safe_agent_run, sync_repos_or_alert
 from workflows.cto_approval import cto_approval
 from workflows.research_backlog import add_entry, format_entry_for_prompt, get_revisit_candidate, mark_revisited
@@ -84,7 +85,7 @@ async def find_problem(group_names: list[str]) -> str:
 Ты сейчас в роли: {opener_role}. Ты начинаешь рабочую сессию с коллегой
 (коллегами): {', '.join(n for n in group_names if n != opener_role)}.
 
-{"У тебя есть доступ к реальному коду BLD System (bld-system, bld-panel) "
+{f"У тебя есть доступ к реальному коду компании ({', '.join(REPOS.keys())}) "
  "через tools (list_repo_files, read_file, git_log, grep_repo). Можешь "
  "либо покопаться в реальном коде и найти конкретную техническую "
  "проблему, требующую решения, либо взять абстрактную архитектурную/"

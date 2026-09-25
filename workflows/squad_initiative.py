@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from agents.squads import SQUADS
-from tools.repo_tools import clone_or_update_repos, grep_repo, git_log
+from tools.repo_tools import REPOS, clone_or_update_repos, grep_repo, git_log
 from workflows._common import ask, curate_knowledge, notify_done, notify_failed
 from workflows.cto_approval import cto_approval
 from workflows.squad_task import detect_relevant_squads, run_squad_relay, run_squad_task
@@ -100,8 +100,8 @@ async def squad_proposal_agent(squad_key: str) -> dict | None:
 Текущая доска задач (что уже в работе — НЕ дублируй это):
 {board_summary}
 {get_relevant_pulse_threads(squad["domain_keywords"])}
-Посмотри реальный код через git_log/grep_repo в репозиториях bld-system
-и bld-panel. Найди ОДНУ конкретную реальную проблему в твоей зоне
+Посмотри реальный код через git_log/grep_repo в репозиториях
+{", ".join(REPOS.keys())}. Найди ОДНУ конкретную реальную проблему в твоей зоне
 ответственности — баг, технический долг, слабое место — которой ещё нет
 на доске.
 
