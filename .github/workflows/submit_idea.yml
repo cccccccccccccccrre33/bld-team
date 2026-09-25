@@ -1,0 +1,41 @@
+name: Submit Idea
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: 'Заголовок идеи (коротко)'
+        required: true
+      summary:
+        description: 'Описание — что и почему'
+        required: true
+      scope:
+        description: 'крупное или мелкое'
+        required: false
+        default: 'мелкое'
+
+permissions:
+  contents: write
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Никаких AI-креденшалов не нужно — add_entry() не вызывает
+      # ни одного агента, просто пишет запись в .state/product_backlog.json.
+      - name: Submit idea to backlog
+        run: python main_submit_idea.py "${{ github.event.inputs.title }}" "${{ github.event.inputs.summary }}" "${{ github.event.inputs.scope }}"
