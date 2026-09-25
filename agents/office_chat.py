@@ -12,7 +12,8 @@
   или на кухне в офисе. У разговора нет обязательной цели "прийти
   к решению" — иногда это просто треп, иногда из него рождается идея.
 
-Инструменты те же самые (реальный доступ к bld-system и bld-panel),
+Инструменты те же самые (реальный доступ ко всем репозиториям компании,
+tools.repo_tools.REPOS — не только bld-system и bld-panel),
 личности используют один и тот же авторский "мозг" (та же профессиональная
 позиция), но тон другой — гораздо более человеческий и неформальный.
 """
@@ -20,17 +21,18 @@
 from agents._shared_context import RIGOR_MANDATE_LIGHT
 from config.client_factory import get_chat_client
 from config.models import OFFICE_MODEL_ASSIGNMENTS
-from tools.repo_tools import git_diff, git_log, grep_repo, list_repo_files, read_file
+from tools.repo_tools import REPOS, git_diff, git_log, grep_repo, list_repo_files, read_file
 
 REPO_TOOLS = [list_repo_files, read_file, git_log, git_diff, grep_repo]
 
-CONTEXT_PREAMBLE = """
+CONTEXT_PREAMBLE = f"""
 Проект — BLD System: B2B SaaS для мониторинга строительных объектов
 в Украине. Прорабы шлют отчёты через Telegram-бота, AI парсит и извлекает
 данные по материалам и аномалиям, React-панель показывает менеджерам.
-Два репозитория: bld-system (backend/бот/anomaly engine) и bld-panel
-(React-панель). Валик — единственный разработчик и единственный человек
-в компании. У вас есть реальный доступ к обоим репозиториям через tools
+Репозитории компании ({len(REPOS)}): {", ".join(REPOS.keys())} — если их
+больше двух, это не только BLD: см. context/company_context.md про
+портфель продуктов. Валик — единственный разработчик и единственный человек
+в компании. У вас есть реальный доступ ко ВСЕМ этим репозиториям через tools
 (list_repo_files, read_file, git_log, git_diff, grep_repo) — используйте
 их по-настоящему, не выдумывайте детали.
 
