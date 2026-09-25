@@ -315,6 +315,11 @@ CONSTRUCTION_MASTERS_MODEL_ASSIGNMENTS = {
     "field_to_product_designer": _env("MODEL_FIELD_TO_PRODUCT_DESIGNER", "gpt-5.4-mini"),
     "practicing_chief_architect": _env("MODEL_PRACTICING_CHIEF_ARCHITECT", "gpt-5.4-mini"),
     "trust_general_director": _env("MODEL_TRUST_GENERAL_DIRECTOR", "gpt-5.4-mini"),
+    # Точечные добавки (см. agents/construction_masters.py, группа 3) —
+    # оба про суждение на специфичных данных, не про написание кода,
+    # тот же уровень, что у большинства этого файла.
+    "construction_surety_risk_actuary": _env("MODEL_CONSTRUCTION_SURETY_RISK_ACTUARY", "gpt-5.4-mini"),
+    "worker_dignity_ethicist": _env("MODEL_WORKER_DIGNITY_ETHICIST", "gpt-5.4-mini"),
 }
 
 # --- Knowledge Curator (agents/knowledge_curator.py) ---
